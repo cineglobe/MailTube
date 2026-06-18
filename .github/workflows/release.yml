@@ -40,7 +40,7 @@ jobs:
           build-args: |
             SOURCE_URL=${{ github.server_url }}/${{ github.repository }}
             VERSION=${{ github.ref_name }}
-      - uses: sigstore/cosign-installer@v4
+      - uses: sigstore/cosign-installer@v4.1.2
       - run: cosign sign --yes "ghcr.io/cineglobe/mailtube@${{ steps.build.outputs.digest }}"
       - uses: actions/attest-build-provenance@v2
         with:
