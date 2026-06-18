@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-IMAGE="${MAILTUBE_IMAGE:-ghcr.io/OWNER/MailTube:latest}"
+IMAGE="${MAILTUBE_IMAGE:-ghcr.io/cineglobe/mailtube:latest}"
 CONFIG_DIR="${MAILTUBE_CONFIG_DIR:-$HOME/.config/mailtube}"
 
 fail() { printf 'MailTube: %s\n' "$1" >&2; exit 1; }

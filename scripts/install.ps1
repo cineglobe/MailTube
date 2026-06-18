@@ -1,5 +1,5 @@
 $ErrorActionPreference = "Stop"
-$Image = if ($env:MAILTUBE_IMAGE) { $env:MAILTUBE_IMAGE } else { "ghcr.io/OWNER/MailTube:latest" }
+$Image = if ($env:MAILTUBE_IMAGE) { $env:MAILTUBE_IMAGE } else { "ghcr.io/cineglobe/mailtube:latest" }
 $ConfigDir = if ($env:MAILTUBE_CONFIG_DIR) { $env:MAILTUBE_CONFIG_DIR } else { Join-Path $HOME ".config\mailtube" }
 
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw "Docker Desktop is required." }

@@ -24,10 +24,10 @@ MailTube is a private, self-hosted appliance that turns permitted YouTube links 
 Prerequisites: a 64-bit Linux, macOS, or Windows machine with Docker and Docker Compose v2. Raspberry Pi OS Lite must be 64-bit.
 
 ```bash
-curl -fsSL https://github.com/OWNER/MailTube/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/cineglobe/MailTube/releases/latest/download/install.sh | sh
 ```
 
-Release automation derives the GHCR namespace from the repository and publishes an owner-specific installer. Until a remote exists, replace `OWNER` in examples. If you do not trust pipe-to-shell installation, follow [the manual Compose guide](docs/docker-compose.md).
+The release installer pulls the signed multi-architecture image from `ghcr.io/cineglobe/mailtube`. If you do not trust pipe-to-shell installation, follow [the manual Compose guide](docs/docker-compose.md).
 
 For local development:
 

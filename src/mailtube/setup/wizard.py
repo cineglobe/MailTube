@@ -507,7 +507,7 @@ class MailTubeSetupApp(App[str]):
         data = self.data
         concurrency = {"pi": 1, "balanced": 2, "workstation": 4}[data.resource_preset]
         bind = "127.0.0.1" if data.bind_mode in {"tailscale", "localhost"} else "0.0.0.0"
-        image = os.getenv("MAILTUBE_IMAGE", "ghcr.io/OWNER/MailTube:latest")
+        image = os.getenv("MAILTUBE_IMAGE", "ghcr.io/cineglobe/mailtube:latest")
         instance_id = secrets.token_hex(8)
         secret_values = {
             "admin_password_hash": AuthService.hash_password(data.admin_password),

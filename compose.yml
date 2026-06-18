@@ -2,7 +2,7 @@ name: mailtube
 
 services:
   mailtube:
-    image: ${MAILTUBE_IMAGE:-ghcr.io/OWNER/MailTube:latest}
+    image: ${MAILTUBE_IMAGE:-ghcr.io/cineglobe/mailtube:latest}
     build:
       context: .
     restart: unless-stopped

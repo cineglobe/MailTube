@@ -22,7 +22,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ghcr.io/cineglobe/mailtube
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -41,17 +41,17 @@ jobs:
             SOURCE_URL=${{ github.server_url }}/${{ github.repository }}
             VERSION=${{ github.ref_name }}
       - uses: sigstore/cosign-installer@v4
-      - run: cosign sign --yes "ghcr.io/${GITHUB_REPOSITORY,,}@${{ steps.build.outputs.digest }}"
+      - run: cosign sign --yes "ghcr.io/cineglobe/mailtube@${{ steps.build.outputs.digest }}"
       - uses: actions/attest-build-provenance@v2
         with:
-          subject-name: ghcr.io/${{ github.repository }}
+          subject-name: ghcr.io/cineglobe/mailtube
           subject-digest: "${{ steps.build.outputs.digest }}"
           push-to-registry: true
       - run: |
-          sed "s|ghcr.io/OWNER/MailTube|ghcr.io/${GITHUB_REPOSITORY,,}|g" scripts/install.sh > install.sh
-          sed "s|ghcr.io/OWNER/MailTube|ghcr.io/${GITHUB_REPOSITORY,,}|g" scripts/install.ps1 > install.ps1
+          cp scripts/install.sh install.sh
+          cp scripts/install.ps1 install.ps1
           printf '{"version":"%s","image":"ghcr.io/%s","digest":"%s"}\n' \
-            "${GITHUB_REF_NAME#v}" "${GITHUB_REPOSITORY,,}" "${{ steps.build.outputs.digest }}" > stable-manifest.json
+            "${GITHUB_REF_NAME#v}" "cineglobe/mailtube" "${{ steps.build.outputs.digest }}" > stable-manifest.json
           sha256sum stable-manifest.json install.sh install.ps1 > SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:
