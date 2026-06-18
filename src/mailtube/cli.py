@@ -19,8 +19,20 @@ def build_parser() -> argparse.ArgumentParser:
     serve = subparsers.add_parser("serve", help="Run the MailTube web and worker service")
     serve.add_argument("--host")
     serve.add_argument("--port", type=int)
-    subparsers.add_parser("setup", help="Launch the interactive setup wizard")
-    subparsers.add_parser("configure", help="Re-run the interactive setup wizard")
+    setup = subparsers.add_parser("setup", help="Launch the setup wizard")
+    setup.add_argument(
+        "--non-interactive",
+        type=Path,
+        metavar="FILE",
+        help="Generate configuration from an owner-only JSON setup file",
+    )
+    configure = subparsers.add_parser("configure", help="Re-run the setup wizard")
+    configure.add_argument(
+        "--non-interactive",
+        type=Path,
+        metavar="FILE",
+        help="Generate configuration from an owner-only JSON setup file",
+    )
     subparsers.add_parser("doctor", help="Run redacted local diagnostics")
     subparsers.add_parser("hash-password", help="Generate an Argon2id admin password hash")
     backup = subparsers.add_parser("backup", help="Create an online SQLite backup")
@@ -47,7 +59,7 @@ def main() -> None:
     if command in {"setup", "configure"}:
         from mailtube.setup.wizard import run_setup
 
-        run_setup()
+        run_setup(args.non_interactive)
         return
     settings = Settings()
     if command == "doctor":

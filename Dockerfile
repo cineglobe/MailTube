@@ -12,7 +12,7 @@ RUN pnpm build
 FROM denoland/deno:bin-2.8.1 AS deno
 
 FROM python:3.12-slim-bookworm AS runtime
-ARG VERSION=1.0.0
+ARG VERSION=1.0.1
 ARG SOURCE_URL="https://github.com/cineglobe/MailTube"
 LABEL org.opencontainers.image.title="MailTube" \
       org.opencontainers.image.description="Private web and email media conversion appliance" \

@@ -5,7 +5,8 @@ import os
 import platform
 import secrets
 import shutil
-from dataclasses import dataclass, field
+import sys
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any, cast
 
@@ -68,6 +69,78 @@ class SetupData:
     retention_hours: int = 24
     pot_provider: bool = False
     cookies_source: str = ""
+
+
+def validate_setup_data(data: SetupData) -> None:
+    """Validate values shared by interactive and unattended setup."""
+    for name in ("port", "imap_port", "smtp_port", "max_urls", "max_file_mb", "retention_hours"):
+        value = getattr(data, name)
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(f"{name} must be an integer")
+    for name in ("email_enabled", "s3_force_path_style", "pot_provider"):
+        if not isinstance(getattr(data, name), bool):
+            raise ValueError(f"{name} must be true or false")
+    for name in ("allowed_hosts", "sender_allowlist"):
+        value = getattr(data, name)
+        if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+            raise ValueError(f"{name} must be a JSON array of strings")
+    choices = {
+        "bind_mode": {"tailscale", "localhost", "lan"},
+        "email_preset": {"gmail", "generic"},
+        "smtp_security": {"starttls", "tls"},
+        "sender_policy": {"allowlist", "any"},
+        "delivery_mode": {"links", "hybrid", "attachments"},
+        "storage_preset": {"r2", "aws", "minio", "generic", "local"},
+        "resource_preset": {"pi", "balanced", "workstation"},
+    }
+    for name, allowed in choices.items():
+        value = getattr(data, name)
+        if value not in allowed:
+            raise ValueError(f"{name} must be one of: {', '.join(sorted(allowed))}")
+    if not 1 <= data.port <= 65535:
+        raise ValueError("port must be between 1 and 65535")
+    if not data.public_url.startswith(("http://", "https://")):
+        raise ValueError("public_url must start with http:// or https://")
+    if not data.allowed_hosts:
+        raise ValueError("allowed_hosts must contain at least one hostname")
+    if len(data.admin_password) < 12:
+        raise ValueError("admin_password must contain at least 12 characters")
+    if data.email_enabled and not data.imap_username:
+        raise ValueError("imap_username is required when email is enabled")
+    if data.email_enabled and not data.imap_password:
+        raise ValueError("imap_password is required when email is enabled")
+    if data.email_enabled and not data.smtp_password:
+        raise ValueError("smtp_password is required when email is enabled")
+    if data.email_enabled and data.delivery_mode in {"links", "hybrid"}:
+        if data.storage_preset == "local":
+            raise ValueError("links and hybrid email delivery require S3-compatible storage")
+    if not 1 <= data.max_urls <= 25:
+        raise ValueError("max_urls must be between 1 and 25")
+    if data.max_file_mb < 50:
+        raise ValueError("max_file_mb must be at least 50")
+    if not 1 <= data.retention_hours <= 168:
+        raise ValueError("retention_hours must be between 1 and 168")
+
+
+def load_setup_data(path: Path) -> SetupData:
+    """Load a mode-0600 JSON file for unattended setup."""
+    if str(path) == "-":
+        source = sys.stdin.read()
+    else:
+        if os.name != "nt" and path.stat().st_mode & 0o077:
+            raise ValueError("non-interactive setup file must have mode 0600")
+        source = path.read_text(encoding="utf-8")
+    raw = json.loads(source)
+    if not isinstance(raw, dict):
+        raise ValueError("non-interactive setup file must contain a JSON object")
+    known = {item.name for item in fields(SetupData)}
+    unknown = sorted(set(raw) - known)
+    if unknown:
+        raise ValueError(f"unknown setup fields: {', '.join(unknown)}")
+    data = SetupData(**raw)
+    data.storage_backend = "local" if data.storage_preset == "local" else "s3"
+    validate_setup_data(data)
+    return data
 
 
 class WizardScreen(Screen[None]):
@@ -505,6 +578,7 @@ class MailTubeSetupApp(App[str]):
     def write_configuration(self) -> Path:
         self.config_dir.mkdir(parents=True, exist_ok=True)
         data = self.data
+        validate_setup_data(data)
         concurrency = {"pi": 1, "balanced": 2, "workstation": 4}[data.resource_preset]
         bind = "127.0.0.1" if data.bind_mode in {"tailscale", "localhost"} else "0.0.0.0"
         image = os.getenv("MAILTUBE_IMAGE", "ghcr.io/cineglobe/mailtube:latest")
@@ -592,29 +666,49 @@ class MailTubeSetupApp(App[str]):
 
 
 COMPOSE_TEMPLATE = """services:
+  secrets-init:
+    image: ${MAILTUBE_IMAGE}
+    user: "0:0"
+    restart: "no"
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        cp /source/admin_password_hash /target/admin_password_hash
+        cp /source/session_secret /target/session_secret
+        cp /source/imap_password /target/imap_password
+        cp /source/smtp_password /target/smtp_password
+        cp /source/s3_secret_access_key /target/s3_secret_access_key
+        cp /source/youtube-cookies.txt /target/youtube-cookies.txt
+        chmod 0444 /target/*
+    volumes:
+      - ./secrets:/source:ro
+      - ${MAILTUBE_COOKIES_SOURCE}:/source/youtube-cookies.txt:ro
+      - mailtube-secrets:/target
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [DAC_OVERRIDE]
+    security_opt:
+      - no-new-privileges:true
+
   mailtube:
     image: ${MAILTUBE_IMAGE}
     restart: unless-stopped
-    init: true
     env_file: .env
     ports:
       - "${MAILTUBE_BIND_ADDRESS}:${MAILTUBE_HTTP_PORT}:8080"
     volumes:
       - mailtube-data:/data
       - mailtube-work:/work
-      - ${MAILTUBE_COOKIES_SOURCE}:/run/secrets/youtube-cookies.txt:ro
-    secrets:
-      - admin_password_hash
-      - session_secret
-      - imap_password
-      - smtp_password
-      - s3_secret_access_key
+      - mailtube-secrets:/run/secrets:ro
     read_only: true
     tmpfs:
       - /tmp:size=64m,mode=1777
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
+    depends_on:
+      secrets-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/v1/health', timeout=3)"]
       interval: 30s
@@ -639,35 +733,34 @@ COMPOSE_TEMPLATE = """services:
     environment:
       MINIO_ROOT_USER: ${MAILTUBE_S3_ACCESS_KEY_ID}
       MINIO_ROOT_PASSWORD_FILE: /run/secrets/s3_secret_access_key
-    secrets:
-      - s3_secret_access_key
     volumes:
       - minio-data:/data
+      - mailtube-secrets:/run/secrets:ro
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
+    depends_on:
+      secrets-init:
+        condition: service_completed_successfully
 
 volumes:
   mailtube-data:
   mailtube-work:
   minio-data:
-
-secrets:
-  admin_password_hash:
-    file: ./secrets/admin_password_hash
-  session_secret:
-    file: ./secrets/session_secret
-  imap_password:
-    file: ./secrets/imap_password
-  smtp_password:
-    file: ./secrets/smtp_password
-  s3_secret_access_key:
-    file: ./secrets/s3_secret_access_key
+  mailtube-secrets:
 """
 
 
-def run_setup() -> None:
+def run_setup(non_interactive: Path | None = None) -> None:
     config_dir = Path(os.getenv("MAILTUBE_CONFIG_DIR", "./mailtube-config")).resolve()
+    if non_interactive is not None:
+        app = MailTubeSetupApp(config_dir)
+        app.data = load_setup_data(
+            non_interactive if str(non_interactive) == "-" else non_interactive.resolve()
+        )
+        config_path = app.write_configuration()
+        print(f"MailTube configuration written to {config_path}")
+        return
     result = MailTubeSetupApp(config_dir).run()
     if result:
         print(f"MailTube configuration written to {result}")

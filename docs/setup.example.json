@@ -1,0 +1,16 @@
+{
+  "bind_mode": "localhost",
+  "port": 8080,
+  "public_url": "http://127.0.0.1:8080",
+  "allowed_hosts": ["localhost", "127.0.0.1", "mailtube"],
+  "admin_username": "admin",
+  "admin_password": "replace-with-at-least-12-characters",
+  "email_enabled": false,
+  "delivery_mode": "attachments",
+  "storage_preset": "local",
+  "resource_preset": "pi",
+  "max_urls": 5,
+  "max_file_mb": 1024,
+  "retention_hours": 24,
+  "pot_provider": false
+}

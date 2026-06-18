@@ -55,6 +55,32 @@ jobs:
           tags: mailtube:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Verify generated secrets are readable by the non-root container
+        run: |
+          config_dir=$(mktemp -d)
+          setup_file=$(mktemp)
+          cat > "$setup_file" <<'JSON'
+          {
+            "bind_mode": "localhost",
+            "public_url": "http://127.0.0.1:8080",
+            "allowed_hosts": ["localhost", "127.0.0.1"],
+            "admin_password": "correct horse battery",
+            "delivery_mode": "attachments",
+            "storage_preset": "local"
+          }
+          JSON
+          chmod 600 "$setup_file"
+          docker run --rm -i --user "$(id -u):$(id -g)" \
+            -e MAILTUBE_CONFIG_DIR=/config \
+            -e MAILTUBE_IMAGE=mailtube:test \
+            -v "$config_dir:/config" \
+            mailtube:test mailtube setup --non-interactive - < "$setup_file"
+          docker compose --env-file "$config_dir/.env" -f "$config_dir/compose.yml" config >/dev/null
+          docker compose --env-file "$config_dir/.env" -f "$config_dir/compose.yml" run --rm --no-deps secrets-init
+          docker compose --env-file "$config_dir/.env" -f "$config_dir/compose.yml" run --rm --no-deps \
+            --entrypoint /bin/sh mailtube -ec \
+            'test -r /run/secrets/admin_password_hash -a -r /run/secrets/session_secret'
+          docker compose --env-file "$config_dir/.env" -f "$config_dir/compose.yml" down -v
       - run: |
           docker run -d --name mailtube-ci -p 127.0.0.1:8080:8080 \
             -e MAILTUBE_ENVIRONMENT=test mailtube:test

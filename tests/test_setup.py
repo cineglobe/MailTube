@@ -1,4 +1,5 @@
 import stat
+from io import StringIO
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,8 @@ from mailtube.setup.wizard import (
     MailTubeSetupApp,
     PreflightScreen,
     WelcomeScreen,
+    load_setup_data,
+    run_setup,
 )
 
 
@@ -46,4 +49,58 @@ def test_generated_configuration_is_private_and_uses_separate_host_port(tmp_path
     assert 'MAILTUBE_PORT="8080"' in env
     assert "correct horse battery" not in env
     assert "MAILTUBE_SESSION_SECRET_FILE" in env
-    assert "${MAILTUBE_BIND_ADDRESS}:${MAILTUBE_HTTP_PORT}:8080" in compose_path.read_text()
+    compose = compose_path.read_text()
+    assert "${MAILTUBE_BIND_ADDRESS}:${MAILTUBE_HTTP_PORT}:8080" in compose
+    assert "secrets-init:" in compose
+    assert "mailtube-secrets:/run/secrets:ro" in compose
+    assert "condition: service_completed_successfully" in compose
+    assert "cap_add: [DAC_OVERRIDE]" in compose
+    assert "init: true" not in compose
+    assert "\nsecrets:\n" not in compose
+
+
+def test_non_interactive_setup_rejects_open_permissions(tmp_path: Path) -> None:
+    setup_path = tmp_path / "setup.json"
+    setup_path.write_text("{}", encoding="utf-8")
+    setup_path.chmod(0o644)
+    with pytest.raises(ValueError, match="mode 0600"):
+        load_setup_data(setup_path)
+
+
+def test_non_interactive_setup_writes_configuration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    setup_path = tmp_path / "setup.json"
+    setup_path.write_text(
+        """{
+          "bind_mode": "localhost",
+          "port": 8123,
+          "public_url": "http://127.0.0.1:8123",
+          "allowed_hosts": ["localhost", "127.0.0.1"],
+          "admin_password": "correct horse battery",
+          "delivery_mode": "attachments",
+          "storage_preset": "local"
+        }""",
+        encoding="utf-8",
+    )
+    setup_path.chmod(0o600)
+    config_dir = tmp_path / "generated"
+    monkeypatch.setenv("MAILTUBE_CONFIG_DIR", str(config_dir))
+    run_setup(setup_path)
+    assert 'MAILTUBE_HTTP_PORT="8123"' in (config_dir / ".env").read_text()
+    assert "secrets-init:" in (config_dir / "compose.yml").read_text()
+
+
+def test_non_interactive_setup_accepts_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "sys.stdin",
+        StringIO(
+            """{
+              "admin_password": "correct horse battery",
+              "delivery_mode": "attachments",
+              "storage_preset": "local"
+            }"""
+        ),
+    )
+    data = load_setup_data(Path("-"))
+    assert data.storage_backend == "local"

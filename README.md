@@ -27,7 +27,15 @@ Prerequisites: a 64-bit Linux, macOS, or Windows machine with Docker and Docker 
 curl -fsSL https://github.com/cineglobe/MailTube/releases/latest/download/install.sh | sh
 ```
 
-The release installer pulls the signed multi-architecture image from `ghcr.io/cineglobe/mailtube`. If you do not trust pipe-to-shell installation, follow [the manual Compose guide](docs/docker-compose.md).
+The installer reopens `/dev/tty` for the interactive wizard, so the piped command remains interactive. To inspect it before running, download `install.sh`, review it, then execute it directly. The release installer pulls the signed multi-architecture image from `ghcr.io/cineglobe/mailtube`. You can also follow [the manual Compose guide](docs/docker-compose.md).
+
+For repeatable unattended deployments, create an owner-only JSON setup file from [the example](docs/setup.example.json), then run:
+
+```bash
+chmod 600 setup.json
+export MAILTUBE_SETUP_FILE="$PWD/setup.json"
+curl -fsSL https://github.com/cineglobe/MailTube/releases/latest/download/install.sh | sh
+```
 
 For local development:
 
@@ -63,6 +71,7 @@ MP4 selects the best available stream at or below the requested height. MP3 bitr
 
 - Use a dedicated Gmail mailbox and dedicated storage credentials.
 - Keep the dashboard on localhost, a trusted LAN, or [Tailscale Serve](docs/tailscale.md).
+- MailTube never changes Tailscale Serve routes automatically; the installer prints a port-specific command for you to review.
 - Keep sender policy on allowlist-only unless you understand the abuse risk.
 - Prefer private object storage links for email delivery. Gmail's 25 MB total attachment limit includes MIME overhead, so MailTube uses an 18 MiB safe ceiling.
 - Leave the default 24-hour retention in place unless you have a reason to change it.
