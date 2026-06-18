@@ -53,6 +53,8 @@ def test_generated_configuration_is_private_and_uses_separate_host_port(tmp_path
     assert "${MAILTUBE_BIND_ADDRESS}:${MAILTUBE_HTTP_PORT}:8080" in compose
     assert "secrets-init:" in compose
     assert "mailtube-secrets:/run/secrets:ro" in compose
+    assert "${MAILTUBE_COOKIES_SOURCE}:/cookie-source:ro" in compose
+    assert ":/source/youtube-cookies.txt:ro" not in compose
     assert "condition: service_completed_successfully" in compose
     assert "cap_add: [DAC_OVERRIDE]" in compose
     assert "init: true" not in compose

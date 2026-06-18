@@ -678,11 +678,11 @@ COMPOSE_TEMPLATE = """services:
         cp /source/imap_password /target/imap_password
         cp /source/smtp_password /target/smtp_password
         cp /source/s3_secret_access_key /target/s3_secret_access_key
-        cp /source/youtube-cookies.txt /target/youtube-cookies.txt
+        cp /cookie-source /target/youtube-cookies.txt
         chmod 0444 /target/*
     volumes:
       - ./secrets:/source:ro
-      - ${MAILTUBE_COOKIES_SOURCE}:/source/youtube-cookies.txt:ro
+      - ${MAILTUBE_COOKIES_SOURCE}:/cookie-source:ro
       - mailtube-secrets:/target
     read_only: true
     cap_drop: [ALL]
