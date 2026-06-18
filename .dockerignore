@@ -1,0 +1,14 @@
+.git
+.github
+.venv
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+apps/web/.next
+apps/web/node_modules
+my_version
+mailtube-config
+data
+work
+docs/design/*.png

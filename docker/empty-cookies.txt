@@ -1,0 +1,2 @@
+# Netscape HTTP Cookie File
+# Replace this file only if the troubleshooting guide says cookies are necessary.

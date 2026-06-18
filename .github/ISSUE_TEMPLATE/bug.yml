@@ -1,0 +1,25 @@
+name: Bug report
+description: Report a reproducible MailTube defect
+body:
+  - type: markdown
+    attributes:
+      value: Never include credentials, cookies, private URLs, sender addresses, or presigned links.
+  - type: input
+    id: version
+    attributes: { label: MailTube version }
+    validations: { required: true }
+  - type: dropdown
+    id: architecture
+    attributes: { label: Architecture, options: [amd64, arm64] }
+    validations: { required: true }
+  - type: textarea
+    id: reproduction
+    attributes: { label: Reproduction steps }
+    validations: { required: true }
+  - type: textarea
+    id: expected
+    attributes: { label: Expected and actual behavior }
+    validations: { required: true }
+  - type: textarea
+    id: diagnostics
+    attributes: { label: Redacted diagnostics }

@@ -1,0 +1,15 @@
+name: Setup problem
+description: Get help with installation or configuration
+body:
+  - type: input
+    id: platform
+    attributes: { label: OS, architecture, and Docker version }
+    validations: { required: true }
+  - type: dropdown
+    id: stage
+    attributes: { label: Failing stage, options: [Installer, Setup TUI, Compose start, Health check, Email test, Storage test] }
+    validations: { required: true }
+  - type: textarea
+    id: details
+    attributes: { label: Redacted error and steps tried }
+    validations: { required: true }

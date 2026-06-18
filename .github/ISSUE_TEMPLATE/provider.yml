@@ -1,0 +1,11 @@
+name: Provider compatibility
+description: Report a sanitized email, storage, or downloader compatibility issue
+body:
+  - type: dropdown
+    id: provider
+    attributes: { label: Provider area, options: [Gmail, Generic IMAP/SMTP, Cloudflare R2, AWS S3, MinIO, YouTube/yt-dlp] }
+    validations: { required: true }
+  - type: textarea
+    id: details
+    attributes: { label: Version, sanitized configuration shape, and redacted error }
+    validations: { required: true }

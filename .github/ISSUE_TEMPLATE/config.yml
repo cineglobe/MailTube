@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: ../../security/advisories/new
+    about: Report security issues privately; never open a public issue.
+  - name: Support guide
+    url: ../../blob/main/SUPPORT.md
+    about: Read setup and troubleshooting guidance before opening an issue.
