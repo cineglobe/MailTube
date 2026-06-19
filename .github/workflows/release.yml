@@ -2,6 +2,19 @@ name: Release image
 on:
   push:
     tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: SemVer to publish, without the v prefix
+        required: true
+        type: string
+      sha:
+        description: Fully tested commit to release
+        required: true
+        type: string
+concurrency:
+  group: release-${{ inputs.version || github.ref_name }}
+  cancel-in-progress: false
 permissions:
   contents: write
   packages: write
@@ -12,6 +25,53 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || github.sha }}
+      - id: release
+        name: Validate release version and source
+        env:
+          DISPATCH_VERSION: ${{ inputs.version }}
+          DISPATCH_SHA: ${{ inputs.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            version=$DISPATCH_VERSION
+            sha=$DISPATCH_SHA
+          else
+            version=${REF_NAME#v}
+            sha=$GITHUB_SHA
+          fi
+          test "$(git rev-parse HEAD)" = "$sha" || {
+            echo "Checked-out commit does not match release source $sha" >&2
+            exit 1
+          }
+          VERSION="$version" python - <<'PY'
+          import json
+          import os
+          import pathlib
+          import re
+          import tomllib
+
+          version = os.environ["VERSION"]
+          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+              raise SystemExit(f"Invalid release version: {version}")
+          root = pathlib.Path(".")
+          versions = {
+              "pyproject.toml": tomllib.loads((root / "pyproject.toml").read_text())["project"]["version"],
+              "apps/web/package.json": json.loads((root / "apps/web/package.json").read_text())["version"],
+          }
+          init = (root / "src/mailtube/__init__.py").read_text()
+          versions["src/mailtube/__init__.py"] = re.search(r'__version__ = "([^"]+)"', init).group(1)
+          dockerfile = (root / "Dockerfile").read_text()
+          versions["Dockerfile"] = re.search(r"ARG VERSION=([^\n]+)", dockerfile).group(1)
+          mismatches = {path: value for path, value in versions.items() if value != version}
+          if mismatches:
+              raise SystemExit(f"Version mismatch for {version}: {mismatches}")
+          PY
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "major_minor=${version%.*}" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
@@ -24,8 +84,8 @@ jobs:
         with:
           images: ghcr.io/cineglobe/mailtube
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=${{ steps.release.outputs.version }}
+            type=raw,value=${{ steps.release.outputs.major_minor }}
             type=raw,value=latest
       - id: build
         uses: docker/build-push-action@v6
@@ -39,7 +99,7 @@ jobs:
           sbom: true
           build-args: |
             SOURCE_URL=${{ github.server_url }}/${{ github.repository }}
-            VERSION=${{ github.ref_name }}
+            VERSION=v${{ steps.release.outputs.version }}
       - uses: sigstore/cosign-installer@v4.1.2
       - run: cosign sign --yes "ghcr.io/cineglobe/mailtube@${{ steps.build.outputs.digest }}"
       - uses: actions/attest-build-provenance@v2
@@ -51,10 +111,12 @@ jobs:
           cp scripts/install.sh install.sh
           cp scripts/install.ps1 install.ps1
           printf '{"version":"%s","image":"ghcr.io/%s","digest":"%s"}\n' \
-            "${GITHUB_REF_NAME#v}" "cineglobe/mailtube" "${{ steps.build.outputs.digest }}" > stable-manifest.json
+            "${{ steps.release.outputs.version }}" "cineglobe/mailtube" "${{ steps.build.outputs.digest }}" > stable-manifest.json
           sha256sum stable-manifest.json install.sh install.ps1 > SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.release.outputs.version }}
+          target_commitish: ${{ steps.release.outputs.sha }}
           generate_release_notes: true
           files: |
             stable-manifest.json

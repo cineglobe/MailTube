@@ -1,0 +1,85 @@
+name: Automatic release
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: automatic-release-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  coordinate:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - id: version
+        name: Read and validate the project version
+        run: |
+          version=$(python - <<'PY'
+          import re
+          import tomllib
+
+          version = tomllib.load(open("pyproject.toml", "rb"))["project"]["version"]
+          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+              raise SystemExit(f"Invalid project version: {version}")
+          print(version)
+          PY
+          )
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - id: existing
+        name: Check whether this version is already released
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v$VERSION" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "v$VERSION already exists; no release is needed."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Wait for security workflows on the same commit
+        if: steps.existing.outputs.exists == 'false'
+        run: |
+          wait_for_workflow() {
+            workflow=$1
+            attempt=0
+            while [ "$attempt" -lt 60 ]; do
+              state=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$workflow" \
+                --commit "$RELEASE_SHA" --limit 1 --json status,conclusion \
+                --jq 'if length == 0 then "missing" else .[0].status + ":" + (.[0].conclusion // "") end')
+              case "$state" in
+                completed:success) echo "$workflow passed."; return 0 ;;
+                completed:*) echo "$workflow finished with $state" >&2; return 1 ;;
+                *) echo "Waiting for $workflow ($state)…" ;;
+              esac
+              attempt=$((attempt + 1))
+              sleep 10
+            done
+            echo "Timed out waiting for $workflow on $RELEASE_SHA" >&2
+            return 1
+          }
+          wait_for_workflow security.yml
+          wait_for_workflow codeql.yml
+      - name: Dispatch the signed multi-architecture release
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref main \
+            -f version="$VERSION" -f sha="$RELEASE_SHA"
+          echo "Dispatched v$VERSION from $RELEASE_SHA."
