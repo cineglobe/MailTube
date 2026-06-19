@@ -3,7 +3,7 @@ from io import StringIO
 from pathlib import Path
 
 import pytest
-from textual.widgets import Input
+from textual.widgets import Input, Select
 
 from mailtube.setup.wizard import (
     AccessScreen,
@@ -30,6 +30,21 @@ async def test_wizard_keyboard_flow_reaches_email_screen(tmp_path: Path) -> None
         app.screen.query_one("#admin-confirm", Input).value = "correct horse battery"
         await pilot.click("#go-email")
         assert isinstance(app.screen, EmailScreen)
+        await pilot.pause()
+        imap_host = app.screen.query_one("#imap-host", Input)
+        smtp_host = app.screen.query_one("#smtp-host", Input)
+        assert imap_host.outer_size.height == 3
+        assert smtp_host.outer_size.height == 3
+        assert imap_host.styles.border.top[0] == "solid"
+        app.screen.query_one("#email-preset", Select).value = "generic"
+        imap_host.value = "imap.example.com"
+        smtp_host.value = "smtp.example.com"
+        app.screen.query_one("#email-preset", Select).value = "gmail"
+        await pilot.pause()
+        assert imap_host.value == "imap.gmail.com"
+        assert app.screen.query_one("#imap-port", Input).value == "993"
+        assert smtp_host.value == "smtp.gmail.com"
+        assert app.screen.query_one("#smtp-port", Input).value == "587"
 
 
 def test_generated_configuration_is_private_and_uses_separate_host_port(tmp_path: Path) -> None:

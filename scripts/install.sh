@@ -6,6 +6,14 @@ CONFIG_DIR="${MAILTUBE_CONFIG_DIR:-$HOME/.config/mailtube}"
 SETUP_FILE="${MAILTUBE_SETUP_FILE:-}"
 
 fail() { printf 'MailTube: %s\n' "$1" >&2; exit 1; }
+show_fireworks() {
+  test -t 1 || return 0
+  printf '\n\033[38;5;39m       .  *  .       \033[38;5;208m.  +  .\n'
+  printf '\033[38;5;39m    *  \\ | /  *     \033[38;5;208m* \\ | / *\n'
+  printf '\033[38;5;226m  .  -- MAILTUBE --  . \033[38;5;205m-- READY --\n'
+  printf '\033[38;5;39m    *  / | \\  *     \033[38;5;208m* / | \\ *\n'
+  printf '\033[38;5;39m       .  *  .       \033[38;5;208m.  +  .\033[0m\n'
+}
 command -v docker >/dev/null 2>&1 || fail "Docker is required: https://docs.docker.com/engine/install/"
 docker compose version >/dev/null 2>&1 || fail "Docker Compose v2 is required"
 if [ -z "$SETUP_FILE" ]; then
@@ -65,6 +73,9 @@ until docker compose --env-file "$CONFIG_DIR/.env" -f "$CONFIG_DIR/compose.yml" 
   sleep 2
 done
 
+docker compose --env-file "$CONFIG_DIR/.env" -f "$CONFIG_DIR/compose.yml" exec -T mailtube \
+  mailtube doctor >/dev/null || fail "Post-start diagnostics failed. Run: docker compose -f $CONFIG_DIR/compose.yml logs"
+
 mode=$(sed -n 's/^MAILTUBE_DEPLOYMENT_MODE=//p' "$CONFIG_DIR/.env" | tr -d '"')
 host_port=$(sed -n 's/^MAILTUBE_HTTP_PORT=//p' "$CONFIG_DIR/.env" | tr -d '"')
 if [ "$mode" = "tailscale" ]; then
@@ -96,5 +107,6 @@ else
 fi
 
 dashboard_url=${public_url:-"http://127.0.0.1:${host_port:-8080}"}
+show_fireworks
 printf '\nMailTube is ready.\nDashboard: %s\nConfiguration: %s\n' "$dashboard_url" "$CONFIG_DIR"
 printf 'Logs: docker compose --env-file "%s/.env" -f "%s/compose.yml" logs -f\n' "$CONFIG_DIR" "$CONFIG_DIR"

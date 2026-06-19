@@ -284,13 +284,13 @@ class EmailScreen(WizardScreen):
             yield Label("App password")
             yield Input(password=True, id="email-password")
             yield Label("IMAP host and port")
-            with Horizontal():
-                yield Input(data.imap_host, id="imap-host")
-                yield Input(str(data.imap_port), type="integer", id="imap-port")
+            with Horizontal(classes="host-port-row"):
+                yield Input(data.imap_host, placeholder="imap.gmail.com", id="imap-host")
+                yield Input(str(data.imap_port), placeholder="993", type="integer", id="imap-port")
             yield Label("SMTP host and port")
-            with Horizontal():
-                yield Input(data.smtp_host, id="smtp-host")
-                yield Input(str(data.smtp_port), type="integer", id="smtp-port")
+            with Horizontal(classes="host-port-row"):
+                yield Input(data.smtp_host, placeholder="smtp.gmail.com", id="smtp-host")
+                yield Input(str(data.smtp_port), placeholder="587", type="integer", id="smtp-port")
             yield Label("SMTP security")
             yield Select(
                 [("STARTTLS", "starttls"), ("Implicit TLS", "tls")],
@@ -310,6 +310,15 @@ class EmailScreen(WizardScreen):
             yield Static("", id="email-status", classes="status")
             yield self.nav(back="access", next_screen="storage")
         yield Footer()
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id != "email-preset" or event.value != "gmail":
+            return
+        self.query_one("#imap-host", Input).value = "imap.gmail.com"
+        self.query_one("#imap-port", Input).value = "993"
+        self.query_one("#smtp-host", Input).value = "smtp.gmail.com"
+        self.query_one("#smtp-port", Input).value = "587"
+        self.query_one("#smtp-security", Select).value = "starttls"
 
     def capture(self) -> None:
         data = self.setup_app.data
@@ -343,8 +352,13 @@ class EmailScreen(WizardScreen):
         settings = Settings(
             environment="test",
             email_enabled=True,
+            imap_host=data.imap_host,
+            imap_port=data.imap_port,
             imap_username=data.imap_username,
             imap_password=SecretStr(data.imap_password),
+            smtp_host=data.smtp_host,
+            smtp_port=data.smtp_port,
+            smtp_security=cast(Any, data.smtp_security),
             smtp_username=data.smtp_username,
             smtp_password=SecretStr(data.smtp_password),
             smtp_from=data.smtp_from,
@@ -486,6 +500,13 @@ class PolicyScreen(WizardScreen):
                 yield Switch(data.pot_provider, id="pot-provider")
                 yield Label("Enable optional PO-token provider sidecar")
             yield Label("Optional Netscape cookie file on the Docker host")
+            yield Static(
+                "Advanced and usually unnecessary. Cookies let yt-dlp reuse a signed-in YouTube "
+                "browser session when YouTube requires authentication or presents a challenge. "
+                "They do not repair a blocked VPS IP and may grant access to the YouTube account, "
+                "so use a dedicated account and protect the file as a password.",
+                classes="copy compact cookie-help",
+            )
             yield Input(
                 data.cookies_source,
                 placeholder="/home/user/.config/mailtube/youtube-cookies.txt",
@@ -549,7 +570,21 @@ class MailTubeSetupApp(App[str]):
     .copy { color: #b8b5ad; height: auto; margin-bottom: 2; }
     .copy.compact { margin: 1 0; }
     Label { margin-top: 1; }
-    Input, Select { margin-bottom: 1; }
+    Input, Select {
+        background: #171a1f;
+        color: #f7f4ec;
+        border: solid #626872;
+        height: 3;
+        min-height: 3;
+        padding: 0 1;
+        margin-bottom: 1;
+    }
+    Input:focus, Select:focus { border: solid #8fb1ff; }
+    Input > .input--placeholder { color: #858b94; }
+    .host-port-row { height: 5; min-height: 5; }
+    .host-port-row Input { width: 1fr; margin-right: 1; }
+    .host-port-row Input:last-child { width: 14; margin-right: 0; }
+    .cookie-help { color: #9da2aa; }
     .actions { height: auto; margin-top: 2; align-horizontal: right; }
     .actions Button { margin-left: 1; }
     .switch-row { height: 3; align-vertical: middle; }

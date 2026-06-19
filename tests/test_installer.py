@@ -11,3 +11,5 @@ def test_shell_installer_supports_pipe_to_shell_and_preserves_tailscale_routes()
     assert "run --rm --no-deps secrets-init" in installer
     assert "tailscale serve --bg" not in installer
     assert "tailscale serve --https=<HTTPS_PORT>" in installer
+    assert "mailtube doctor" in installer
+    assert "show_fireworks" in installer

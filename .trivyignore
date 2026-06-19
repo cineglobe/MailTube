@@ -1,0 +1,12 @@
+# Starlette CVE exceptions reviewed 2026-06-18. Remove when FastAPI supports the
+# listed fixed Starlette major versions. All other HIGH/CRITICAL findings fail CI.
+
+# CVE-2026-48818: UNC-path SSRF/NTLM credential theft is Windows-specific.
+# MailTube publishes Linux containers only and serves one operator-controlled
+# static directory; no user-controlled filesystem roots are accepted.
+CVE-2026-48818
+
+# CVE-2026-54283: Starlette's application/x-www-form-urlencoded parsing limits
+# can be bypassed. MailTube exposes JSON request bodies and does not call
+# Request.form(), Form(), File(), or UploadFile anywhere in the application.
+CVE-2026-54283
