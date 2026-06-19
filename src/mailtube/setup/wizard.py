@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import platform
+import re
 import secrets
 import shutil
 import sys
@@ -815,6 +816,54 @@ def refresh_compose(config_dir: Path) -> Path:
     temporary_path.chmod(0o600)
     temporary_path.replace(compose_path)
     return compose_path
+
+
+def configure_tailscale(config_dir: Path, dns_name: str, https_port: int = 443) -> str:
+    """Apply a detected Tailscale HTTPS origin without exposing any secret values."""
+    dns_name = dns_name.strip().rstrip(".").lower()
+    if not re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?", dns_name):
+        raise ValueError("Invalid Tailscale DNS name")
+    if not 1 <= https_port <= 65535:
+        raise ValueError("Tailscale HTTPS port must be between 1 and 65535")
+    env_path = config_dir / ".env"
+    if not env_path.is_file():
+        raise ValueError("No MailTube environment file was found")
+    env_lines = env_path.read_text(encoding="utf-8").splitlines()
+    values: dict[str, str] = {}
+    for line in env_lines:
+        if "=" not in line:
+            continue
+        key, raw_value = line.split("=", 1)
+        try:
+            values[key] = str(json.loads(raw_value))
+        except json.JSONDecodeError:
+            values[key] = raw_value.strip('"')
+    allowed_hosts = [host.strip() for host in values.get("MAILTUBE_ALLOWED_HOSTS", "").split(",")]
+    if dns_name not in allowed_hosts:
+        allowed_hosts.append(dns_name)
+    authority = dns_name if https_port == 443 else f"{dns_name}:{https_port}"
+    updates = {
+        "MAILTUBE_PUBLIC_URL": f"https://{authority}",
+        "MAILTUBE_ALLOWED_HOSTS": ",".join(host for host in allowed_hosts if host),
+        "MAILTUBE_SECURE_COOKIES": "true",
+    }
+    updated_keys: set[str] = set()
+    updated_lines: list[str] = []
+    for line in env_lines:
+        key = line.split("=", 1)[0]
+        if key in updates:
+            updated_lines.append(f"{key}={json.dumps(updates[key])}")
+            updated_keys.add(key)
+        else:
+            updated_lines.append(line)
+    for key, value in updates.items():
+        if key not in updated_keys:
+            updated_lines.append(f"{key}={json.dumps(value)}")
+    temporary_env = config_dir / ".env.tmp"
+    temporary_env.write_text("\n".join(updated_lines) + "\n", encoding="utf-8")
+    temporary_env.chmod(0o600)
+    temporary_env.replace(env_path)
+    return f"https://{authority}"
 
 
 def run_setup(non_interactive: Path | None = None) -> None:

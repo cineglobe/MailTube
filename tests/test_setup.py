@@ -11,6 +11,7 @@ from mailtube.setup.wizard import (
     MailTubeSetupApp,
     PreflightScreen,
     WelcomeScreen,
+    configure_tailscale,
     load_setup_data,
     refresh_compose,
     run_setup,
@@ -146,3 +147,21 @@ def test_refresh_compose_preserves_preferences_and_secrets_but_updates_image(
     assert b'MAILTUBE_HTTP_PORT="8080"' in env_after
     assert (tmp_path / "secrets" / "session_secret").read_bytes() == secret_before
     assert stat.S_IMODE(refreshed.stat().st_mode) == 0o600
+
+
+def test_configure_tailscale_adds_https_origin_and_preserves_secrets(tmp_path: Path) -> None:
+    app = MailTubeSetupApp(tmp_path)
+    app.data.admin_password = "correct horse battery"
+    app.data.delivery_mode = "attachments"
+    app.data.storage_preset = "local"
+    app.write_configuration()
+    secret_before = (tmp_path / "secrets" / "session_secret").read_bytes()
+
+    url = configure_tailscale(tmp_path, "OpenClaw.TailExample.ts.net.")
+
+    env = (tmp_path / ".env").read_text(encoding="utf-8")
+    assert url == "https://openclaw.tailexample.ts.net"
+    assert 'MAILTUBE_PUBLIC_URL="https://openclaw.tailexample.ts.net"' in env
+    assert "openclaw.tailexample.ts.net" in env
+    assert 'MAILTUBE_SECURE_COOKIES="true"' in env
+    assert (tmp_path / "secrets" / "session_secret").read_bytes() == secret_before

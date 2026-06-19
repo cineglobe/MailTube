@@ -9,8 +9,8 @@ def test_shell_installer_supports_pipe_to_shell_and_preserves_tailscale_routes()
     assert "< /dev/tty" in installer
     assert "MAILTUBE_SETUP_FILE" in installer
     assert "run --rm --no-deps secrets-init" in installer
-    assert "tailscale serve --bg" not in installer
-    assert "tailscale serve --https=<HTTPS_PORT>" in installer
+    assert "tailscale serve --bg --yes" in installer
+    assert "mailtube configure-tailscale" in installer
     assert "mailtube doctor" in installer
     assert "show_fireworks" in installer
     assert "Detected a previous MailTube setup" in installer

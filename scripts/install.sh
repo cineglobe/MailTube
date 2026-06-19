@@ -6,6 +6,8 @@ CONFIG_DIR="${MAILTUBE_CONFIG_DIR:-$HOME/.config/mailtube}"
 SETUP_FILE="${MAILTUBE_SETUP_FILE:-}"
 EXISTING_CONFIG="${MAILTUBE_EXISTING_CONFIG:-}"
 RUN_SETUP=1
+TAILSCALE_DNS=""
+TAILSCALE_HTTPS_PORT="${MAILTUBE_TAILSCALE_HTTPS_PORT:-}"
 
 fail() { printf 'MailTube: %s\n' "$1" >&2; exit 1; }
 show_fireworks() {
@@ -95,6 +97,26 @@ else
     "$digest" mailtube setup < /dev/tty
 fi
 
+mode=$(sed -n 's/^MAILTUBE_DEPLOYMENT_MODE=//p' "$CONFIG_DIR/.env" | tr -d '"')
+host_port=$(sed -n 's/^MAILTUBE_HTTP_PORT=//p' "$CONFIG_DIR/.env" | tr -d '"')
+TAILSCALE_HTTPS_PORT=${TAILSCALE_HTTPS_PORT:-${host_port:-8080}}
+if [ "$mode" = "tailscale" ] && command -v tailscale >/dev/null 2>&1; then
+  TAILSCALE_DNS=$(
+    tailscale status --json 2>/dev/null | docker run --rm -i --entrypoint python "$digest" \
+      -c 'import json,sys; print(json.load(sys.stdin).get("Self", {}).get("DNSName", "").rstrip("."))' \
+      2>/dev/null
+  ) || TAILSCALE_DNS=""
+  if [ -n "$TAILSCALE_DNS" ]; then
+    docker run --rm \
+      --user "$(id -u):$(id -g)" \
+      -e MAILTUBE_CONFIG_DIR=/config \
+      -v "$CONFIG_DIR:/config" \
+      "$digest" mailtube configure-tailscale "$TAILSCALE_DNS" --https-port "$TAILSCALE_HTTPS_PORT"
+  else
+    printf 'Tailscale is installed but its MagicDNS name could not be detected.\n'
+  fi
+fi
+
 docker compose --env-file "$CONFIG_DIR/.env" -f "$CONFIG_DIR/compose.yml" config >/dev/null
 docker compose --env-file "$CONFIG_DIR/.env" -f "$CONFIG_DIR/compose.yml" run --rm --no-deps secrets-init
 docker compose --env-file "$CONFIG_DIR/.env" -f "$CONFIG_DIR/compose.yml" run --rm --no-deps \
@@ -114,13 +136,34 @@ done
 docker compose --env-file "$CONFIG_DIR/.env" -f "$CONFIG_DIR/compose.yml" exec -T mailtube \
   mailtube doctor >/dev/null || fail "Post-start diagnostics failed. Run: docker compose -f $CONFIG_DIR/compose.yml logs"
 
-mode=$(sed -n 's/^MAILTUBE_DEPLOYMENT_MODE=//p' "$CONFIG_DIR/.env" | tr -d '"')
-host_port=$(sed -n 's/^MAILTUBE_HTTP_PORT=//p' "$CONFIG_DIR/.env" | tr -d '"')
 if [ "$mode" = "tailscale" ]; then
-  printf '\nTailscale mode keeps MailTube on localhost. Existing Serve routes were not changed.\n'
-  printf 'Choose an unused HTTPS port and publish it manually, for example:\n'
-  printf '  tailscale serve --https=<HTTPS_PORT> --bg http://127.0.0.1:%s\n' "${host_port:-8080}"
-  command -v tailscale >/dev/null 2>&1 || printf 'Install Tailscale before running that command.\n'
+  serve_target="http://127.0.0.1:${host_port:-8080}"
+  if [ -n "$TAILSCALE_DNS" ]; then
+    if [ "$TAILSCALE_HTTPS_PORT" = "443" ]; then
+      dashboard_url="https://$TAILSCALE_DNS"
+      if tailscale serve --bg --yes "$serve_target"; then
+        serve_ok=1
+      else
+        serve_ok=0
+      fi
+      retry_command="sudo tailscale serve --bg --yes $serve_target"
+    else
+      dashboard_url="https://$TAILSCALE_DNS:$TAILSCALE_HTTPS_PORT"
+      if tailscale serve --https="$TAILSCALE_HTTPS_PORT" --bg --yes "$serve_target"; then
+        serve_ok=1
+      else
+        serve_ok=0
+      fi
+      retry_command="sudo tailscale serve --https=$TAILSCALE_HTTPS_PORT --bg --yes $serve_target"
+    fi
+    if [ "$serve_ok" -eq 1 ]; then
+      printf '\nTailscale Serve is active at %s\n' "$dashboard_url"
+    else
+      printf '\nMailTube is healthy locally, but Tailscale Serve could not be activated. Try:\n  %s\n' "$retry_command"
+    fi
+  else
+    printf '\nMailTube is healthy locally, but Tailscale Serve is unavailable. Install or connect Tailscale, then rerun this installer.\n'
+  fi
 fi
 
 public_url=$(sed -n 's/^MAILTUBE_PUBLIC_URL=//p' "$CONFIG_DIR/.env" | tr -d '"')
@@ -144,7 +187,7 @@ else
   printf 'Automatic updates were not scheduled. Set MAILTUBE_MANIFEST_URL and MAILTUBE_COSIGN_IDENTITY, then run scripts/install-updater.sh.\n'
 fi
 
-dashboard_url=${public_url:-"http://127.0.0.1:${host_port:-8080}"}
+dashboard_url=${dashboard_url:-${public_url:-"http://127.0.0.1:${host_port:-8080}"}}
 show_fireworks
 printf '\nMailTube is ready.\nDashboard: %s\nConfiguration: %s\n' "$dashboard_url" "$CONFIG_DIR"
 printf 'Logs: docker compose --env-file "%s/.env" -f "%s/compose.yml" logs -f\n' "$CONFIG_DIR" "$CONFIG_DIR"

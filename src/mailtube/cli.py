@@ -37,6 +37,11 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser(
         "refresh-compose", help="Refresh generated Compose services while preserving configuration"
     )
+    tailscale = subparsers.add_parser(
+        "configure-tailscale", help="Apply a detected Tailscale HTTPS origin"
+    )
+    tailscale.add_argument("dns_name")
+    tailscale.add_argument("--https-port", type=int, default=443)
     subparsers.add_parser("hash-password", help="Generate an Argon2id admin password hash")
     backup = subparsers.add_parser("backup", help="Create an online SQLite backup")
     backup.add_argument("destination", type=Path)
@@ -75,6 +80,18 @@ def main() -> None:
         except ValueError as exc:
             raise SystemExit(str(exc)) from exc
         print(f"MailTube Compose configuration refreshed at {path}")
+        return
+    if command == "configure-tailscale":
+        import os
+
+        from mailtube.setup.wizard import configure_tailscale
+
+        config_dir = Path(os.getenv("MAILTUBE_CONFIG_DIR", "./mailtube-config")).resolve()
+        try:
+            url = configure_tailscale(config_dir, args.dns_name, args.https_port)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
+        print(f"MailTube Tailscale URL configured as {url}")
         return
     settings = Settings()
     if command == "doctor":

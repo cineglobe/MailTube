@@ -1,12 +1,12 @@
 # Tailscale
 
-Keep Docker bound to `127.0.0.1`. MailTube does not modify Tailscale Serve automatically because an implicit root route could replace an existing service. Inspect current routes with `tailscale serve status`, choose an unused HTTPS port, then publish MailTube explicitly:
+Keep Docker bound to `127.0.0.1`. During guided setup, MailTube detects the machine's MagicDNS name and publishes the local listener with Tailscale Serve on a matching HTTPS port. A local listener on `127.0.0.1:36006`, for example, becomes `https://machine.tailnet.ts.net:36006`. HTTPS is required; the equivalent `http://` address is not served.
 
 ```bash
-tailscale serve --https=19179 --bg http://127.0.0.1:8080
+tailscale serve --https=36006 --bg --yes http://127.0.0.1:36006
 ```
 
-This keeps the backend off the LAN and lets Tailscale terminate HTTPS. Change `19179` and `8080` to the ports you selected.
+This keeps the backend off the LAN and lets Tailscale terminate HTTPS. Set `MAILTUBE_TAILSCALE_HTTPS_PORT` before installation to choose a different HTTPS port. If automatic activation lacks permission, the installer prints the exact `sudo tailscale serve` recovery command.
 
 Add the resulting hostname to `MAILTUBE_ALLOWED_HOSTS`, set `MAILTUBE_PUBLIC_URL` to the HTTPS URL, and enable secure cookies. MailTube retains its own administrator login; Tailscale identity is defense in depth. Do not trust Tailscale identity headers if the backend is exposed on a non-loopback interface.
 
