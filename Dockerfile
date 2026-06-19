@@ -9,7 +9,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 COPY apps/web/ ./
 RUN pnpm build
 
-FROM denoland/deno:bin-2.8.1 AS deno
+FROM denoland/deno:alpine-2.8.1 AS deno
 
 FROM python:3.12-alpine AS runtime
 ARG VERSION=1.0.2
@@ -28,8 +28,12 @@ ENV PYTHONUNBUFFERED=1 \
     DENO_DIR=/tmp/deno
 
 RUN apk add --no-cache ca-certificates ffmpeg tini
-COPY --from=deno /deno /usr/local/bin/deno
-RUN deno --version
+COPY --from=deno /bin/deno /usr/local/bin/deno
+COPY --from=deno /usr/local/lib/glibc/ /usr/local/lib/glibc/
+COPY --from=deno /lib/ld-linux-* /lib/
+RUN mkdir -p /lib64 \
+    && ln -sf /usr/local/lib/glibc/ld-linux-* /lib64/ \
+    && deno --version
 
 WORKDIR /app
 COPY pyproject.toml constraints.txt README.md ./
