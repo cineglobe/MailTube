@@ -786,6 +786,37 @@ volumes:
 """
 
 
+def refresh_compose(config_dir: Path) -> Path:
+    """Refresh generated deployment plumbing without replacing preferences or secrets."""
+    env_path = config_dir / ".env"
+    secrets_dir = config_dir / "secrets"
+    required_secrets = ("admin_password_hash", "session_secret")
+    if not env_path.is_file() or not all(
+        (secrets_dir / name).is_file() for name in required_secrets
+    ):
+        raise ValueError("No resumable MailTube configuration was found")
+    image = os.getenv("MAILTUBE_IMAGE")
+    if image:
+        env_lines = env_path.read_text(encoding="utf-8").splitlines()
+        image_line = f"MAILTUBE_IMAGE={json.dumps(image)}"
+        had_image = any(line.startswith("MAILTUBE_IMAGE=") for line in env_lines)
+        env_lines = [
+            image_line if line.startswith("MAILTUBE_IMAGE=") else line for line in env_lines
+        ]
+        if not had_image:
+            env_lines.insert(0, image_line)
+        temporary_env = config_dir / ".env.tmp"
+        temporary_env.write_text("\n".join(env_lines) + "\n", encoding="utf-8")
+        temporary_env.chmod(0o600)
+        temporary_env.replace(env_path)
+    compose_path = config_dir / "compose.yml"
+    temporary_path = config_dir / ".compose.yml.tmp"
+    temporary_path.write_text(COMPOSE_TEMPLATE, encoding="utf-8")
+    temporary_path.chmod(0o600)
+    temporary_path.replace(compose_path)
+    return compose_path
+
+
 def run_setup(non_interactive: Path | None = None) -> None:
     config_dir = Path(os.getenv("MAILTUBE_CONFIG_DIR", "./mailtube-config")).resolve()
     if non_interactive is not None:

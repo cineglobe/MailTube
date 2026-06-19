@@ -17,3 +17,7 @@ The generated configuration lives at `~/.config/mailtube` by default. It is owne
 After setup, use `docker compose --env-file ~/.config/mailtube/.env -f ~/.config/mailtube/compose.yml logs -f` for logs and `mailtube doctor` inside the container for a redacted report.
 
 If the configured public URL uses HTTPS, MailTube enables Secure session cookies. Use that HTTPS address for login and authenticated diagnostics. A browser correctly refuses to send those cookies to `http://127.0.0.1`, even though the local health endpoint remains available.
+
+## Resume a partial installation
+
+Running the installer again detects a previously written configuration in `~/.config/mailtube`. Choose **resume** to keep the existing preferences and secrets, refresh generated Compose plumbing from the current image, and continue validation and startup. Choose **start fresh** to move the old directory to a timestamped backup before opening the wizard again. Automation can set `MAILTUBE_EXISTING_CONFIG=resume` or `MAILTUBE_EXISTING_CONFIG=replace` explicitly.

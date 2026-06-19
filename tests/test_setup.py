@@ -12,6 +12,7 @@ from mailtube.setup.wizard import (
     PreflightScreen,
     WelcomeScreen,
     load_setup_data,
+    refresh_compose,
     run_setup,
 )
 
@@ -121,3 +122,27 @@ def test_non_interactive_setup_accepts_stdin(monkeypatch: pytest.MonkeyPatch) ->
     )
     data = load_setup_data(Path("-"))
     assert data.storage_backend == "local"
+
+
+def test_refresh_compose_preserves_preferences_and_secrets_but_updates_image(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app = MailTubeSetupApp(tmp_path)
+    app.data.admin_password = "correct horse battery"
+    app.data.delivery_mode = "attachments"
+    app.data.storage_preset = "local"
+    app.write_configuration()
+    env_before = (tmp_path / ".env").read_bytes()
+    secret_before = (tmp_path / "secrets" / "session_secret").read_bytes()
+    (tmp_path / "compose.yml").write_text("old generated compose", encoding="utf-8")
+
+    monkeypatch.setenv("MAILTUBE_IMAGE", "ghcr.io/cineglobe/mailtube@sha256:new")
+    refreshed = refresh_compose(tmp_path)
+
+    assert "secrets-init:" in refreshed.read_text(encoding="utf-8")
+    env_after = (tmp_path / ".env").read_bytes()
+    assert env_after != env_before
+    assert b'MAILTUBE_IMAGE="ghcr.io/cineglobe/mailtube@sha256:new"' in env_after
+    assert b'MAILTUBE_HTTP_PORT="8080"' in env_after
+    assert (tmp_path / "secrets" / "session_secret").read_bytes() == secret_before
+    assert stat.S_IMODE(refreshed.stat().st_mode) == 0o600

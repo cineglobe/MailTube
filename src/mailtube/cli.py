@@ -34,6 +34,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Generate configuration from an owner-only JSON setup file",
     )
     subparsers.add_parser("doctor", help="Run redacted local diagnostics")
+    subparsers.add_parser(
+        "refresh-compose", help="Refresh generated Compose services while preserving configuration"
+    )
     subparsers.add_parser("hash-password", help="Generate an Argon2id admin password hash")
     backup = subparsers.add_parser("backup", help="Create an online SQLite backup")
     backup.add_argument("destination", type=Path)
@@ -60,6 +63,18 @@ def main() -> None:
         from mailtube.setup.wizard import run_setup
 
         run_setup(args.non_interactive)
+        return
+    if command == "refresh-compose":
+        import os
+
+        from mailtube.setup.wizard import refresh_compose
+
+        config_dir = Path(os.getenv("MAILTUBE_CONFIG_DIR", "./mailtube-config")).resolve()
+        try:
+            path = refresh_compose(config_dir)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
+        print(f"MailTube Compose configuration refreshed at {path}")
         return
     settings = Settings()
     if command == "doctor":

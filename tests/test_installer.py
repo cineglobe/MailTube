@@ -13,3 +13,6 @@ def test_shell_installer_supports_pipe_to_shell_and_preserves_tailscale_routes()
     assert "tailscale serve --https=<HTTPS_PORT>" in installer
     assert "mailtube doctor" in installer
     assert "show_fireworks" in installer
+    assert "Detected a previous MailTube setup" in installer
+    assert "mailtube refresh-compose" in installer
+    assert "MAILTUBE_EXISTING_CONFIG" in installer
