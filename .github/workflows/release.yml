@@ -88,7 +88,7 @@ jobs:
             type=raw,value=${{ steps.release.outputs.major_minor }}
             type=raw,value=latest
       - id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
