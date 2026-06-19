@@ -18,6 +18,20 @@ show_fireworks() {
   printf '\033[38;5;39m    *  / | \\  *     \033[38;5;208m* / | \\ *\n'
   printf '\033[38;5;39m       .  *  .       \033[38;5;208m.  +  .\033[0m\n'
 }
+start_tailscale_serve() {
+  if [ "$TAILSCALE_HTTPS_PORT" = "443" ]; then
+    tailscale serve --bg --yes "$serve_target"
+  else
+    tailscale serve --https="$TAILSCALE_HTTPS_PORT" --bg --yes "$serve_target"
+  fi
+}
+start_tailscale_serve_as_root() {
+  if [ "$TAILSCALE_HTTPS_PORT" = "443" ]; then
+    sudo tailscale serve --bg --yes "$serve_target"
+  else
+    sudo tailscale serve --https="$TAILSCALE_HTTPS_PORT" --bg --yes "$serve_target"
+  fi
+}
 command -v docker >/dev/null 2>&1 || fail "Docker is required: https://docs.docker.com/engine/install/"
 docker compose version >/dev/null 2>&1 || fail "Docker Compose v2 is required"
 if [ -z "$SETUP_FILE" ]; then
@@ -141,25 +155,28 @@ if [ "$mode" = "tailscale" ]; then
   if [ -n "$TAILSCALE_DNS" ]; then
     if [ "$TAILSCALE_HTTPS_PORT" = "443" ]; then
       dashboard_url="https://$TAILSCALE_DNS"
-      if tailscale serve --bg --yes "$serve_target"; then
-        serve_ok=1
-      else
-        serve_ok=0
-      fi
       retry_command="sudo tailscale serve --bg --yes $serve_target"
     else
       dashboard_url="https://$TAILSCALE_DNS:$TAILSCALE_HTTPS_PORT"
-      if tailscale serve --https="$TAILSCALE_HTTPS_PORT" --bg --yes "$serve_target"; then
+      retry_command="sudo tailscale serve --https=$TAILSCALE_HTTPS_PORT --bg --yes $serve_target"
+    fi
+    if start_tailscale_serve; then
+      serve_ok=1
+    elif command -v sudo >/dev/null 2>&1 && test -r /dev/tty; then
+      printf '\nTailscale requires administrator permission. sudo may prompt for your password.\n'
+      if start_tailscale_serve_as_root < /dev/tty; then
         serve_ok=1
       else
         serve_ok=0
       fi
-      retry_command="sudo tailscale serve --https=$TAILSCALE_HTTPS_PORT --bg --yes $serve_target"
+    else
+      serve_ok=0
     fi
     if [ "$serve_ok" -eq 1 ]; then
       printf '\nTailscale Serve is active at %s\n' "$dashboard_url"
     else
       printf '\nMailTube is healthy locally, but Tailscale Serve could not be activated. Try:\n  %s\n' "$retry_command"
+      printf 'To avoid future sudo prompts, run once: sudo tailscale set --operator="$USER"\n'
     fi
   else
     printf '\nMailTube is healthy locally, but Tailscale Serve is unavailable. Install or connect Tailscale, then rerun this installer.\n'
@@ -187,7 +204,16 @@ else
   printf 'Automatic updates were not scheduled. Set MAILTUBE_MANIFEST_URL and MAILTUBE_COSIGN_IDENTITY, then run scripts/install-updater.sh.\n'
 fi
 
-dashboard_url=${dashboard_url:-${public_url:-"http://127.0.0.1:${host_port:-8080}"}}
+# dashboard-url:start
+# Exercised under dash by tests/test_installer.py.
+if [ -z "${dashboard_url:-}" ]; then
+  if [ -n "${public_url:-}" ]; then
+    dashboard_url=$public_url
+  else
+    dashboard_url="http://127.0.0.1:${host_port:-8080}"
+  fi
+fi
+# dashboard-url:end
 show_fireworks
 printf '\nMailTube is ready.\nDashboard: %s\nConfiguration: %s\n' "$dashboard_url" "$CONFIG_DIR"
 printf 'Logs: docker compose --env-file "%s/.env" -f "%s/compose.yml" logs -f\n' "$CONFIG_DIR" "$CONFIG_DIR"
