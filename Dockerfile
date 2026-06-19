@@ -11,7 +11,7 @@ RUN pnpm build
 
 FROM denoland/deno:bin-2.8.1 AS deno
 
-FROM python:3.12-slim-trixie AS runtime
+FROM python:3.12-alpine AS runtime
 ARG VERSION=1.0.2
 ARG SOURCE_URL="https://github.com/cineglobe/MailTube"
 LABEL org.opencontainers.image.title="MailTube" \
@@ -27,10 +27,9 @@ ENV PYTHONUNBUFFERED=1 \
     MAILTUBE_WORK_DIR=/work \
     DENO_DIR=/tmp/deno
 
-RUN apt-get update \
-    && apt-get install --no-install-recommends -y ca-certificates ffmpeg tini \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache ca-certificates ffmpeg tini
 COPY --from=deno /deno /usr/local/bin/deno
+RUN deno --version
 
 WORKDIR /app
 COPY pyproject.toml constraints.txt README.md ./
@@ -43,13 +42,13 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     && python -m pip check
 COPY --from=web-builder /build/apps/web/out ./static
 
-RUN groupadd --gid 10001 mailtube \
-    && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin mailtube \
+RUN addgroup -g 10001 -S mailtube \
+    && adduser -u 10001 -S -D -H -G mailtube mailtube \
     && install -d -o 10001 -g 10001 /data /work /tmp/deno
 USER 10001:10001
 EXPOSE 8080
 VOLUME ["/data", "/work"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/v1/health', timeout=3)"]
-ENTRYPOINT ["/usr/bin/tini", "--"]
+ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["mailtube", "serve"]

@@ -14,7 +14,7 @@ dependencies = [
   "argon2-cffi>=25.1,<26",
   "bgutil-ytdlp-pot-provider==1.3.1",
   "boto3>=1.42,<2",
-  "fastapi>=0.128,<0.129",
+  "fastapi>=0.137,<0.138",
   "jinja2>=3.1,<4",
   "pydantic-settings>=2.12,<3",
   "python-multipart>=0.0.22,<0.1",
