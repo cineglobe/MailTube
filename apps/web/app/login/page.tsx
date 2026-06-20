@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { ArrowRightIcon, LockKeyholeIcon } from "lucide-react"
 import { toast } from "sonner"
 
@@ -15,10 +14,10 @@ import {
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import { apiFetch, rememberSession } from "@/lib/api"
+import { loginDestination } from "@/lib/auth-navigation"
 import type { Session } from "@/lib/types"
 
 export default function LoginPage() {
-  const router = useRouter()
   const [username, setUsername] = useState("admin")
   const [password, setPassword] = useState("")
   const [pending, setPending] = useState(false)
@@ -32,7 +31,7 @@ export default function LoginPage() {
         body: JSON.stringify({ username, password }),
       })
       rememberSession(session)
-      router.replace("/convert/")
+      window.location.replace(loginDestination(window.location.search))
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not sign in")
     } finally {

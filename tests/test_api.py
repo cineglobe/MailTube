@@ -88,3 +88,56 @@ def test_unknown_api_and_frontend_paths_do_not_fall_back_to_index(tmp_path: Path
     with TestClient(create_app(settings)) as client:
         assert client.get("/api/v1/unknown").status_code == 404
         assert client.get("/definitely-not-a-route").status_code == 404
+
+
+def test_email_diagnostic_is_a_csrf_protected_post(tmp_path: Path) -> None:
+    with TestClient(create_app(make_settings(tmp_path))) as client:
+        login = client.post(
+            "/api/v1/auth/login",
+            json={"username": "admin", "password": "correct horse battery"},
+        )
+        assert client.get("/api/v1/diagnostics/email").status_code == 404
+        assert client.post("/api/v1/diagnostics/email").status_code == 403
+        response = client.post(
+            "/api/v1/diagnostics/email",
+            headers={"X-CSRF-Token": login.json()["csrf_token"]},
+        )
+        assert response.status_code == 200
+        assert response.json() == {"ok": False, "detail": "Email integration is disabled"}
+
+
+def test_runtime_settings_are_encrypted_and_survive_restart(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    with TestClient(create_app(settings)) as client:
+        login = client.post(
+            "/api/v1/auth/login",
+            json={"username": "admin", "password": "correct horse battery"},
+        )
+        response = client.patch(
+            "/api/v1/settings",
+            json={
+                "poll_interval_seconds": 15,
+                "imap_host": "imap.example.test",
+                "imap_password": "private-app-password",
+                "max_concurrent_jobs": 2,
+            },
+            headers={"X-CSRF-Token": login.json()["csrf_token"]},
+        )
+        assert response.status_code == 200
+        stored = client.app.state.mailtube.db.get_runtime_settings()
+        assert stored["_secret_imap_password"].startswith("enc:v1:")
+        assert "private-app-password" not in stored["_secret_imap_password"]
+
+    with TestClient(create_app(settings)) as client:
+        login = client.post(
+            "/api/v1/auth/login",
+            json={"username": "admin", "password": "correct horse battery"},
+        )
+        response = client.get("/api/v1/settings")
+        payload = response.json()
+        assert response.status_code == 200
+        assert payload["imap_host"] == "imap.example.test"
+        assert payload["poll_interval_seconds"] == 15
+        assert payload["max_concurrent_jobs"] == 2
+        assert payload["has_imap_password"] is True
+        assert "imap_password" not in payload

@@ -16,3 +16,42 @@ test("login is keyboard-accessible", async ({ page }) => {
     )
   ).toEqual([])
 })
+
+test("one successful login opens the dashboard and theme toggle works", async ({
+  page,
+}) => {
+  const session = {
+    username: "admin",
+    csrf_token: "test-csrf",
+    expires_at: "2099-01-01T00:00:00Z",
+  }
+  await page.route("**/api/v1/auth/login", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(session),
+    })
+  })
+  await page.route("**/api/v1/auth/session", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(session),
+    })
+  })
+
+  await page.goto("/login/")
+  await page.getByLabel("Password").fill("correct horse battery")
+  await page.getByRole("button", { name: /sign in/i }).click()
+
+  await expect(page).toHaveURL(/\/convert\/$/)
+  await expect(
+    page.getByRole("heading", { name: /turn a link into a file/i })
+  ).toBeVisible()
+
+  await page.getByRole("button", { name: "Use dark theme" }).click()
+  await expect(page.locator("html")).toHaveClass(/dark/)
+  await expect(
+    page.getByRole("button", { name: "Use light theme" })
+  ).toBeVisible()
+})

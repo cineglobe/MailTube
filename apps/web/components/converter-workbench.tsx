@@ -119,10 +119,10 @@ export function ConverterWorkbench({ onCreated }: { onCreated: () => void }) {
 
   return (
     <section className="px-5 py-10 md:px-10 md:py-14 xl:px-14 xl:py-16">
-      <h1 className="display-title max-w-4xl text-6xl leading-[0.98] sm:text-7xl xl:text-[5.25rem]">
+      <h1 className="display-title max-w-4xl text-4xl leading-tight sm:text-5xl xl:text-6xl">
         Turn a link into a file.
       </h1>
-      <p className="mt-5 max-w-2xl text-lg leading-relaxed text-muted-foreground md:text-xl">
+      <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground md:text-base">
         Paste one or more YouTube links. Choose the format and MailTube will
         handle the rest.
       </p>

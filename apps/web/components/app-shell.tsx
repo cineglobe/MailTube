@@ -6,6 +6,7 @@ import { ChevronDownIcon, LogOutIcon, UserRoundIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { ThemeToggle } from "@/components/theme-toggle"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -74,31 +75,34 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               )
             })}
           </nav>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                className="my-auto"
-                aria-label="Admin menu"
-              >
-                <UserRoundIcon data-icon="inline-start" />
-                <span className="hidden sm:inline">Admin</span>
-                <ChevronDownIcon
-                  className="hidden sm:block"
-                  data-icon="inline-end"
-                />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Local administrator</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuGroup>
-                <DropdownMenuItem onSelect={logout}>
-                  <LogOutIcon /> Sign out
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="my-auto flex items-center gap-2">
+            <ThemeToggle />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="my-auto"
+                  aria-label="Admin menu"
+                >
+                  <UserRoundIcon data-icon="inline-start" />
+                  <span className="hidden sm:inline">Admin</span>
+                  <ChevronDownIcon
+                    className="hidden sm:block"
+                    data-icon="inline-end"
+                  />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Local administrator</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  <DropdownMenuItem onSelect={logout}>
+                    <LogOutIcon /> Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </header>
       <main className="min-h-0 flex-1">{children}</main>

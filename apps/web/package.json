@@ -1,6 +1,6 @@
 {
   "name": "web",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "type": "module",
   "private": true,
   "packageManager": "pnpm@11.4.0",

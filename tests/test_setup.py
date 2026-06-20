@@ -64,6 +64,7 @@ def test_generated_configuration_is_private_and_uses_separate_host_port(tmp_path
     env = env_path.read_text()
     assert 'MAILTUBE_HTTP_PORT="8765"' in env
     assert 'MAILTUBE_PORT="8080"' in env
+    assert 'MAILTUBE_POLL_INTERVAL_SECONDS="15"' in env
     assert "correct horse battery" not in env
     assert "MAILTUBE_SESSION_SECRET_FILE" in env
     compose = compose_path.read_text()

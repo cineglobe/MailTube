@@ -3,6 +3,7 @@ import "@fontsource-variable/ibm-plex-sans/wght.css"
 import "@fontsource/ibm-plex-mono/400.css"
 import type { Metadata } from "next"
 
+import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
 
 import "./globals.css"
@@ -18,8 +19,10 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
-        {children}
-        <Toaster position="bottom-right" richColors closeButton />
+        <ThemeProvider>
+          {children}
+          <Toaster position="bottom-right" richColors closeButton />
+        </ThemeProvider>
       </body>
     </html>
   )

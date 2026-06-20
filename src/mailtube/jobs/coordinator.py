@@ -27,19 +27,31 @@ class JobCoordinator:
         self.storage = storage
         self._stopped = asyncio.Event()
         self._workers: list[asyncio.Task[None]] = []
+        self._cleanup_task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
+        self._stopped.clear()
         self._workers = [
             asyncio.create_task(self._worker(index), name=f"mailtube-worker-{index}")
             for index in range(self.settings.max_concurrent_jobs)
         ]
-        self._workers.append(asyncio.create_task(self._cleanup_loop(), name="mailtube-cleanup"))
+        self._cleanup_task = asyncio.create_task(self._cleanup_loop(), name="mailtube-cleanup")
+
+    def resize(self) -> None:
+        """Grow the worker pool immediately; surplus workers idle after current work."""
+        for index in range(len(self._workers), self.settings.max_concurrent_jobs):
+            self._workers.append(
+                asyncio.create_task(self._worker(index), name=f"mailtube-worker-{index}")
+            )
 
     async def stop(self) -> None:
         self._stopped.set()
-        for worker in self._workers:
-            worker.cancel()
-        await asyncio.gather(*self._workers, return_exceptions=True)
+        tasks = [*self._workers]
+        if self._cleanup_task:
+            tasks.append(self._cleanup_task)
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     async def cancel(self, job_id: str) -> bool:
         changed = self.db.cancel_job(job_id)
@@ -48,6 +60,12 @@ class JobCoordinator:
 
     async def _worker(self, index: int) -> None:
         while not self._stopped.is_set():
+            if index >= self.settings.max_concurrent_jobs:
+                try:
+                    await asyncio.wait_for(self._stopped.wait(), timeout=0.75)
+                except TimeoutError:
+                    pass
+                continue
             job = await asyncio.to_thread(self.db.claim_next_job)
             if not job:
                 try:

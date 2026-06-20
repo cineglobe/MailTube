@@ -17,3 +17,7 @@ def test_comma_separated_environment_lists(monkeypatch) -> None:  # type: ignore
     settings = Settings(environment="test")
     assert settings.allowed_hosts == ["localhost", "127.0.0.1", "mailtube"]
     assert settings.sender_allowlist == ["one@example.com", "two@example.com"]
+
+
+def test_email_polling_defaults_to_fifteen_seconds() -> None:
+    assert Settings(environment="test").poll_interval_seconds == 15

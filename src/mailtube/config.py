@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     pot_provider_url: str | None = None
 
     email_enabled: bool = False
-    poll_interval_seconds: int = 30
+    poll_interval_seconds: int = 15
     imap_host: str = "imap.gmail.com"
     imap_port: int = 993
     imap_folder: str = "INBOX"

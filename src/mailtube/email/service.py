@@ -8,6 +8,8 @@ import logging
 import re
 import shutil
 import smtplib
+import socket
+import ssl
 from datetime import UTC, datetime, timedelta
 from email.header import decode_header
 from email.message import EmailMessage
@@ -59,6 +61,9 @@ class EmailService:
             autoescape=select_autoescape(["html", "xml"]),
         )
         self._stopped = asyncio.Event()
+        self.last_poll_at: str | None = None
+        self.last_poll_error: str | None = None
+        self.last_poll_message_count = 0
 
     async def run(self) -> None:
         poll = asyncio.create_task(self._poll_loop(), name="mailtube-imap")
@@ -75,13 +80,19 @@ class EmailService:
     async def _poll_loop(self) -> None:
         while not self._stopped.is_set():
             try:
-                await asyncio.to_thread(self.poll_once)
+                self.last_poll_message_count = await asyncio.to_thread(self.poll_once)
+                self.last_poll_at = datetime.now(UTC).isoformat()
+                self.last_poll_error = None
             except Exception as exc:
+                self.last_poll_at = datetime.now(UTC).isoformat()
+                self.last_poll_error = self._safe_connection_error(exc, "IMAP poll")
                 logger.warning("IMAP poll failed: %s", type(exc).__name__)
+            runtime = self.db.get_runtime_settings()
+            interval = int(
+                runtime.get("poll_interval_seconds", self.settings.poll_interval_seconds)
+            )
             try:
-                await asyncio.wait_for(
-                    self._stopped.wait(), timeout=self.settings.poll_interval_seconds
-                )
+                await asyncio.wait_for(self._stopped.wait(), timeout=max(5, interval))
             except TimeoutError:
                 pass
 
@@ -106,7 +117,7 @@ class EmailService:
         allowlist = runtime.get("sender_allowlist", self.settings.sender_allowlist)
         return policy, {str(address).lower() for address in allowlist}
 
-    def poll_once(self) -> None:
+    def poll_once(self) -> int:
         with imaplib.IMAP4_SSL(self.settings.imap_host, self.settings.imap_port) as mailbox:
             mailbox.login(
                 self.settings.imap_username, self.settings.imap_password.get_secret_value()
@@ -120,13 +131,14 @@ class EmailService:
             )
             status, data = mailbox.uid("search", None, "UNSEEN")  # type: ignore[arg-type]
             if status != "OK" or not data or not data[0]:
-                return
+                return 0
             for raw_uid in data[0].split():
                 uid = raw_uid.decode()
                 if self.db.has_mail_message(self.settings.imap_username, uidvalidity, uid):
                     mailbox.uid("store", uid, "+FLAGS", "\\Seen")
                     continue
                 self._process_uid(mailbox, uid, uidvalidity)
+            return len(data[0].split())
 
     def _process_uid(self, mailbox: imaplib.IMAP4_SSL, raw_uid: str, uidvalidity: str) -> None:
         status, data = mailbox.uid("fetch", raw_uid, "(RFC822)")
@@ -147,7 +159,7 @@ class EmailService:
             mailbox.uid("store", raw_uid, "+FLAGS", "\\Seen")
             return
         sender = parseaddr(message.get("Reply-To") or message.get("From") or "")[1].lower()
-        if not sender or sender == self.settings.smtp_from.lower():
+        if not sender:
             mailbox.uid("store", raw_uid, "+FLAGS", "\\Seen")
             return
         policy, allowlist = self._runtime_sender_policy()
@@ -363,6 +375,9 @@ class EmailService:
                 mailbox.login(
                     self.settings.imap_username, self.settings.imap_password.get_secret_value()
                 )
+        except Exception as exc:
+            return {"ok": False, "detail": self._safe_connection_error(exc, "IMAP")}
+        try:
             if self.settings.smtp_security == "tls":
                 server: smtplib.SMTP = smtplib.SMTP_SSL(
                     self.settings.smtp_host, self.settings.smtp_port
@@ -376,4 +391,40 @@ class EmailService:
                 )
             return {"ok": True, "detail": "IMAP and SMTP authentication succeeded"}
         except Exception as exc:
-            return {"ok": False, "detail": f"Email test failed: {type(exc).__name__}"}
+            return {"ok": False, "detail": self._safe_connection_error(exc, "SMTP")}
+
+    def status(self) -> dict[str, Any]:
+        if self.last_poll_error:
+            detail = self.last_poll_error
+        elif self.last_poll_at:
+            detail = f"Last IMAP check succeeded at {self.last_poll_at}"
+        else:
+            detail = "Email worker is starting its first IMAP check"
+        return {
+            "ok": self.last_poll_error is None,
+            "detail": detail,
+            "last_poll_at": self.last_poll_at,
+            "last_poll_error": self.last_poll_error,
+            "last_poll_message_count": self.last_poll_message_count,
+            "poll_interval_seconds": int(
+                self.db.get_runtime_settings().get(
+                    "poll_interval_seconds", self.settings.poll_interval_seconds
+                )
+            ),
+        }
+
+    @staticmethod
+    def _safe_connection_error(exc: Exception, service: str) -> str:
+        if isinstance(exc, imaplib.IMAP4.error):
+            return f"{service} authentication or mailbox command was rejected"
+        if isinstance(exc, smtplib.SMTPAuthenticationError):
+            return f"{service} authentication was rejected"
+        if isinstance(exc, socket.gaierror):
+            return f"{service} host could not be resolved"
+        if isinstance(exc, (TimeoutError, socket.timeout)):
+            return f"{service} connection timed out"
+        if isinstance(exc, ConnectionRefusedError):
+            return f"{service} connection was refused"
+        if isinstance(exc, ssl.SSLError):
+            return f"{service} TLS negotiation failed"
+        return f"{service} check failed ({type(exc).__name__})"

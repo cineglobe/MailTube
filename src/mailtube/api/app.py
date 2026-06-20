@@ -16,6 +16,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, 
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import SecretStr, ValidationError
 
 from mailtube import __version__
 from mailtube.api.schemas import CreateJobsRequest, LoginRequest, RuntimeSettingsUpdate
@@ -25,9 +26,65 @@ from mailtube.downloader import YtDlpDownloader
 from mailtube.email.service import EmailService
 from mailtube.jobs import JobCoordinator
 from mailtube.security.auth import AuthService
+from mailtube.security.runtime_secrets import (
+    RuntimeSecretError,
+    open_runtime_secret,
+    seal_runtime_secret,
+)
 from mailtube.storage import LocalStorage, S3Storage, Storage
 
 logger = logging.getLogger(__name__)
+
+EDITABLE_SETTING_FIELDS = {
+    "admin_username",
+    "admin_password_hash",
+    "max_urls_per_batch",
+    "max_concurrent_jobs",
+    "max_duration_seconds",
+    "max_file_mb",
+    "job_timeout_seconds",
+    "inactivity_timeout_seconds",
+    "retention_hours",
+    "default_format",
+    "default_mp4_quality",
+    "default_mp3_quality",
+    "default_wav_quality",
+    "email_enabled",
+    "poll_interval_seconds",
+    "imap_host",
+    "imap_port",
+    "imap_folder",
+    "imap_username",
+    "smtp_host",
+    "smtp_port",
+    "smtp_security",
+    "smtp_username",
+    "smtp_from",
+    "smtp_from_name",
+    "sender_policy",
+    "sender_allowlist",
+    "delivery_mode",
+    "max_attachment_mb",
+    "max_email_requests_per_hour",
+    "storage_backend",
+    "s3_endpoint",
+    "s3_region",
+    "s3_bucket",
+    "s3_access_key_id",
+    "s3_force_path_style",
+    "pot_provider_url",
+    "update_channel",
+}
+RUNTIME_SECRET_FIELDS = {"imap_password", "smtp_password", "s3_secret_access_key"}
+STORAGE_SETTING_FIELDS = {
+    "storage_backend",
+    "s3_endpoint",
+    "s3_region",
+    "s3_bucket",
+    "s3_access_key_id",
+    "s3_secret_access_key",
+    "s3_force_path_style",
+}
 
 
 class SecurityHeadersMiddleware:
@@ -64,44 +121,123 @@ class SecurityHeadersMiddleware:
 
 
 class AppState:
-    def __init__(self, settings: Settings) -> None:
-        self.settings = settings
-        self.db = Database(settings.db_path)
+    def __init__(self, settings: Settings, db: Database) -> None:
+        self.db = db
+        self.settings = self._load_persisted_settings(settings)
         self.storage: Storage = (
-            S3Storage(settings) if settings.storage_backend == "s3" else LocalStorage()
+            S3Storage(self.settings) if self.settings.storage_backend == "s3" else LocalStorage()
         )
-        self.downloader = YtDlpDownloader(settings)
-        self.auth = AuthService(self.db, settings)
-        self.coordinator = JobCoordinator(settings, self.db, self.downloader, self.storage)
+        self.downloader = YtDlpDownloader(self.settings)
+        self.auth = AuthService(self.db, self.settings)
+        self.coordinator = JobCoordinator(self.settings, self.db, self.downloader, self.storage)
         self.email: EmailService | None = None
         self.email_task: asyncio.Task[None] | None = None
+
+    def _load_persisted_settings(self, base: Settings) -> Settings:
+        stored = self.db.get_runtime_settings()
+        values = {key: value for key, value in stored.items() if key in EDITABLE_SETTING_FIELDS}
+        session_secret = base.session_secret.get_secret_value()
+        for field in RUNTIME_SECRET_FIELDS:
+            encrypted = stored.get(f"_secret_{field}")
+            if not encrypted:
+                continue
+            try:
+                values[field] = SecretStr(
+                    open_runtime_secret(str(encrypted), session_secret, base.instance_id)
+                )
+            except RuntimeSecretError:
+                logger.warning("Ignoring an unreadable encrypted %s override", field)
+        return Settings.model_validate({**base.model_dump(), **values})
+
+    async def start(self) -> None:
+        await self.coordinator.start()
+        if self.settings.email_enabled:
+            self._start_email()
+
+    async def stop(self) -> None:
+        await self._stop_email()
+        await self.coordinator.stop()
+
+    def _start_email(self) -> None:
+        self.email = EmailService(self.settings, self.db, self.storage)
+        self.email_task = asyncio.create_task(self.email.run(), name="mailtube-email-service")
+
+    async def _stop_email(self) -> None:
+        if self.email:
+            await self.email.stop()
+        if self.email_task:
+            self.email_task.cancel()
+            await asyncio.gather(self.email_task, return_exceptions=True)
+        self.email = None
+        self.email_task = None
+
+    async def apply_runtime_settings(self, values: dict[str, Any]) -> list[str]:
+        admin_password = values.pop("admin_password", None)
+        if admin_password:
+            values["admin_password_hash"] = AuthService.hash_password(str(admin_password))
+        unknown = set(values) - EDITABLE_SETTING_FIELDS - RUNTIME_SECRET_FIELDS
+        if unknown:
+            raise ValueError(f"Unsupported settings: {', '.join(sorted(unknown))}")
+
+        secret_updates: dict[str, str] = {}
+        for key in RUNTIME_SECRET_FIELDS:
+            value = values.pop(key, None)
+            if value is not None:
+                secret_updates[key] = str(value)
+        proposed_values = {**self.settings.model_dump(), **values}
+        proposed_values.update({key: SecretStr(value) for key, value in secret_updates.items()})
+        proposed = Settings.model_validate(proposed_values)
+        proposed.validate_runtime_secrets()
+
+        storage_changed = bool((set(values) | set(secret_updates)) & STORAGE_SETTING_FIELDS)
+        proposed_storage = self.storage
+        if storage_changed:
+            proposed_storage = (
+                S3Storage(proposed) if proposed.storage_backend == "s3" else LocalStorage()
+            )
+
+        persisted = dict(values)
+        session_secret = self.settings.session_secret.get_secret_value()
+        for key, value in secret_updates.items():
+            persisted[f"_secret_{key}"] = seal_runtime_secret(
+                value, session_secret, self.settings.instance_id
+            )
+        self.db.set_runtime_settings(persisted)
+
+        email_was_enabled = self.settings.email_enabled
+        self.settings = proposed
+        self.auth.settings = proposed
+        self.downloader.settings = proposed
+        self.coordinator.settings = proposed
+        self.coordinator.resize()
+        if storage_changed:
+            self.storage = proposed_storage
+            self.coordinator.storage = proposed_storage
+
+        if email_was_enabled and not proposed.email_enabled:
+            await self._stop_email()
+        elif not email_was_enabled and proposed.email_enabled:
+            self._start_email()
+        elif self.email:
+            self.email.settings = proposed
+            self.email.storage = self.storage
+        return sorted(set(values) | set(secret_updates))
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     runtime = settings or Settings()
-    state_holder: dict[str, AppState] = {}
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         runtime.prepare_directories()
         runtime.validate_runtime_secrets()
-        app_state = AppState(runtime)
-        state_holder["state"] = app_state
+        db = Database(runtime.db_path)
+        db.initialize()
+        app_state = AppState(runtime, db)
         app.state.mailtube = app_state
-        app_state.db.initialize()
-        await app_state.coordinator.start()
-        if runtime.email_enabled:
-            app_state.email = EmailService(runtime, app_state.db, app_state.storage)
-            app_state.email_task = asyncio.create_task(
-                app_state.email.run(), name="mailtube-email-service"
-            )
+        await app_state.start()
         yield
-        if app_state.email:
-            await app_state.email.stop()
-        if app_state.email_task:
-            app_state.email_task.cancel()
-            await asyncio.gather(app_state.email_task, return_exceptions=True)
-        await app_state.coordinator.stop()
+        await app_state.stop()
 
     app = FastAPI(
         title="MailTube API",
@@ -152,6 +288,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except metadata.PackageNotFoundError:
             ejs_version = "missing"
         javascript_ok = bool(shutil.which("deno")) and ejs_version != "missing"
+        if not app_state.settings.email_enabled:
+            email_status: dict[str, Any] = {"ok": True, "detail": "disabled"}
+        elif app_state.email_task and app_state.email_task.done():
+            email_status = {"ok": False, "detail": "Email worker stopped unexpectedly"}
+        elif app_state.email:
+            email_status = app_state.email.status()
+        else:
+            email_status = {"ok": False, "detail": "Email worker is not running"}
         return {
             "ok": bool(downloader["ok"]) and javascript_ok,
             "version": __version__,
@@ -165,10 +309,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "ok": True,
                 "detail": app_state.settings.storage_backend,
             },
-            "email": {
-                "ok": not app_state.settings.email_enabled or app_state.email_task is not None,
-                "detail": "enabled" if app_state.settings.email_enabled else "disabled",
-            },
+            "email": email_status,
             "disk": {
                 "ok": disk.free > app_state.settings.max_file_bytes,
                 "free_bytes": disk.free,
@@ -353,36 +494,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         _: dict[str, Any] = Depends(require_session),
         app_state: AppState = Depends(get_state),
     ) -> dict[str, Any]:
-        overrides = app_state.db.get_runtime_settings()
-        return {
-            "sender_policy": overrides.get("sender_policy", app_state.settings.sender_policy),
-            "sender_allowlist": overrides.get(
-                "sender_allowlist", app_state.settings.sender_allowlist
-            ),
-            "retention_hours": overrides.get("retention_hours", app_state.settings.retention_hours),
-            "max_urls_per_batch": overrides.get(
-                "max_urls_per_batch", app_state.settings.max_urls_per_batch
-            ),
-            "max_concurrent_jobs": overrides.get(
-                "max_concurrent_jobs", app_state.settings.max_concurrent_jobs
-            ),
-            "email_enabled": app_state.settings.email_enabled,
-            "delivery_mode": app_state.settings.delivery_mode,
-            "storage_backend": app_state.settings.storage_backend,
-            "update_channel": app_state.settings.update_channel,
+        current = app_state.settings
+        result = {
+            key: getattr(current, key)
+            for key in EDITABLE_SETTING_FIELDS
+            if key != "admin_password_hash"
         }
+        result.update(
+            {
+                "public_url": current.public_url,
+                "allowed_hosts": current.allowed_hosts,
+                "secure_cookies": current.secure_cookies,
+                "internal_port": current.port,
+                "cookies_configured": current.cookies_file is not None,
+                "has_imap_password": bool(current.imap_password.get_secret_value()),
+                "has_smtp_password": bool(current.smtp_password.get_secret_value()),
+                "has_s3_secret_access_key": bool(current.s3_secret_access_key.get_secret_value()),
+            }
+        )
+        return result
 
     @app.patch("/api/v1/settings")
-    def update_settings(
+    async def update_settings(
         payload: RuntimeSettingsUpdate,
         _: dict[str, Any] = Depends(require_csrf),
         app_state: AppState = Depends(get_state),
     ) -> dict[str, Any]:
-        values = payload.model_dump(exclude_none=True)
+        values = payload.model_dump(exclude_unset=True)
         if not values:
             raise HTTPException(status_code=422, detail="No settings supplied")
-        app_state.db.set_runtime_settings(values)
-        return {"ok": True, "updated": sorted(values)}
+        try:
+            updated = await app_state.apply_runtime_settings(values)
+        except (ValueError, ValidationError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {"ok": True, "updated": updated}
 
     @app.post("/api/v1/diagnostics/email")
     async def test_email(

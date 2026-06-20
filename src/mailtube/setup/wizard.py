@@ -651,6 +651,7 @@ class MailTubeSetupApp(App[str]):
             "MAILTUBE_ADMIN_PASSWORD_HASH_FILE": "/run/secrets/admin_password_hash",
             "MAILTUBE_SESSION_SECRET_FILE": "/run/secrets/session_secret",
             "MAILTUBE_EMAIL_ENABLED": str(data.email_enabled).lower(),
+            "MAILTUBE_POLL_INTERVAL_SECONDS": 15,
             "MAILTUBE_IMAP_HOST": data.imap_host,
             "MAILTUBE_IMAP_PORT": data.imap_port,
             "MAILTUBE_IMAP_USERNAME": data.imap_username,

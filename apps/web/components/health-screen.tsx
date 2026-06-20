@@ -71,11 +71,20 @@ export function HealthScreen() {
               <p className="mt-1 text-sm text-muted-foreground">
                 {check.detail}
               </p>
+              {name === "Email" && data?.email.poll_interval_seconds ? (
+                <p className="mt-1 font-mono text-xs text-muted-foreground">
+                  Poll interval: {data.email.poll_interval_seconds}s
+                  {data.email.last_poll_message_count
+                    ? ` · ${data.email.last_poll_message_count} unread message(s) seen`
+                    : ""}
+                </p>
+              ) : null}
             </div>
             {!["Database", "JavaScript runtime"].includes(name) ? (
               <Button
                 variant="outline"
                 size="sm"
+                type="button"
                 onClick={() =>
                   runDiagnostic(
                     name.toLowerCase() as "email" | "storage" | "downloader"

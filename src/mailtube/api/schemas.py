@@ -45,8 +45,44 @@ class CreateJobsRequest(BaseModel):
 
 
 class RuntimeSettingsUpdate(BaseModel):
+    admin_username: str | None = Field(default=None, min_length=1, max_length=128)
+    admin_password: str | None = Field(default=None, min_length=12, max_length=1024)
     sender_policy: Literal["allowlist", "any"] | None = None
     sender_allowlist: list[str] | None = None
     retention_hours: int | None = Field(default=None, ge=1, le=168)
     max_urls_per_batch: int | None = Field(default=None, ge=1, le=25)
     max_concurrent_jobs: int | None = Field(default=None, ge=1, le=8)
+    max_duration_seconds: int | None = Field(default=None, ge=60, le=86400)
+    max_file_mb: int | None = Field(default=None, ge=25, le=10240)
+    job_timeout_seconds: int | None = Field(default=None, ge=60, le=86400)
+    inactivity_timeout_seconds: int | None = Field(default=None, ge=30, le=3600)
+    default_format: Literal["mp4", "mp3", "wav"] | None = None
+    default_mp4_quality: str | None = None
+    default_mp3_quality: str | None = None
+    default_wav_quality: str | None = None
+    email_enabled: bool | None = None
+    poll_interval_seconds: int | None = Field(default=None, ge=5, le=3600)
+    imap_host: str | None = Field(default=None, min_length=1, max_length=253)
+    imap_port: int | None = Field(default=None, ge=1, le=65535)
+    imap_folder: str | None = Field(default=None, min_length=1, max_length=255)
+    imap_username: str | None = Field(default=None, max_length=320)
+    imap_password: str | None = Field(default=None, min_length=1, max_length=1024)
+    smtp_host: str | None = Field(default=None, min_length=1, max_length=253)
+    smtp_port: int | None = Field(default=None, ge=1, le=65535)
+    smtp_security: Literal["starttls", "tls"] | None = None
+    smtp_username: str | None = Field(default=None, max_length=320)
+    smtp_password: str | None = Field(default=None, min_length=1, max_length=1024)
+    smtp_from: str | None = Field(default=None, max_length=320)
+    smtp_from_name: str | None = Field(default=None, max_length=128)
+    delivery_mode: Literal["links", "hybrid", "attachments"] | None = None
+    max_attachment_mb: int | None = Field(default=None, ge=1, le=24)
+    max_email_requests_per_hour: int | None = Field(default=None, ge=1, le=1000)
+    storage_backend: Literal["local", "s3"] | None = None
+    s3_endpoint: str | None = Field(default=None, max_length=2048)
+    s3_region: str | None = Field(default=None, min_length=1, max_length=128)
+    s3_bucket: str | None = Field(default=None, max_length=255)
+    s3_access_key_id: str | None = Field(default=None, max_length=1024)
+    s3_secret_access_key: str | None = Field(default=None, min_length=1, max_length=2048)
+    s3_force_path_style: bool | None = None
+    pot_provider_url: str | None = Field(default=None, max_length=2048)
+    update_channel: Literal["stable", "off"] | None = None

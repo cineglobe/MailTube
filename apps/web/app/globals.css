@@ -82,26 +82,85 @@
   --sidebar-ring: #0757ee;
 }
 
+.dark {
+  color-scheme: dark;
+  --background: #11120f;
+  --foreground: #f3f0e7;
+  --card: #181916;
+  --card-foreground: #f3f0e7;
+  --popover: #1b1c18;
+  --popover-foreground: #f3f0e7;
+  --primary: #5f91ff;
+  --primary-foreground: #0b1730;
+  --secondary: #24251f;
+  --secondary-foreground: #f3f0e7;
+  --muted: #24251f;
+  --muted-foreground: #aaa99f;
+  --accent: #2c2d26;
+  --accent-foreground: #f3f0e7;
+  --destructive: #ff6b4f;
+  --ready: #69c37d;
+  --border: #45463f;
+  --input: #5d5e56;
+  --ring: #78a1ff;
+  --chart-1: #78a1ff;
+  --chart-2: #ff765c;
+  --chart-3: #69c37d;
+  --chart-4: #c4bea9;
+  --chart-5: #f3f0e7;
+  --sidebar: #11120f;
+  --sidebar-foreground: #f3f0e7;
+  --sidebar-primary: #78a1ff;
+  --sidebar-primary-foreground: #0b1730;
+  --sidebar-accent: #2c2d26;
+  --sidebar-accent-foreground: #f3f0e7;
+  --sidebar-border: #45463f;
+  --sidebar-ring: #78a1ff;
+}
+
 @layer base {
-  * { @apply border-border outline-ring/50; }
-  html { @apply bg-background font-sans text-foreground; }
-  body { @apply min-h-svh bg-background text-foreground antialiased; }
-  ::selection { @apply bg-primary text-primary-foreground; }
-  button, input, textarea, select { font: inherit; }
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply bg-background font-sans text-foreground;
+  }
+  body {
+    @apply min-h-svh bg-background text-foreground antialiased;
+  }
+  ::selection {
+    @apply bg-primary text-primary-foreground;
+  }
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
 }
 
 @layer components {
   .display-title {
     font-family: var(--font-heading);
-    font-variation-settings: "wght" 610, "SOFT" 40, "WONK" 1;
+    font-variation-settings:
+      "wght" 610,
+      "SOFT" 40,
+      "WONK" 1;
     letter-spacing: -0.055em;
   }
-  .editorial-rule { border-color: color-mix(in srgb, var(--border) 84%, transparent); }
-  .queue-scroll { content-visibility: auto; contain-intrinsic-size: auto 540px; }
+  .editorial-rule {
+    border-color: color-mix(in srgb, var(--border) 84%, transparent);
+  }
+  .queue-scroll {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 540px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
