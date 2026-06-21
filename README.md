@@ -48,6 +48,8 @@ docker compose up --build
 
 Open `http://127.0.0.1:8080`.
 
+https://www.star-history.com/?repos=cineglobe%2FMailTube&type=date&legend=top-left
+
 ## Email requests
 
 Put one request on each line. Lines without format or quality use the configured defaults.
