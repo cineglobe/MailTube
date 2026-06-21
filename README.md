@@ -48,7 +48,13 @@ docker compose up --build
 
 Open `http://127.0.0.1:8080`.
 
-https://www.star-history.com/?repos=cineglobe%2FMailTube&type=date&legend=top-left
+<a href="https://www.star-history.com/?repos=cineglobe%2FMailTube&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=cineglobe/MailTube&type=date&theme=dark&legend=bottom-right" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=cineglobe/MailTube&type=date&legend=bottom-right" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=cineglobe/MailTube&type=date&legend=bottom-right" />
+ </picture>
+</a>
 
 ## Email requests
 
