@@ -176,6 +176,8 @@ class YtDlpDownloader:
     @staticmethod
     def _safe_failure(lines: list[str]) -> str:
         detail = " ".join(lines).lower()
+        if "errno 21" in detail or "is a directory" in detail:
+            return "The configured YouTube cookies path is not a file"
         if "sign in to confirm" in detail or "not a bot" in detail:
             return "YouTube requested additional verification; review the compatibility guide"
         if "429" in detail or "too many requests" in detail:

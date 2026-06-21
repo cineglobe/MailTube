@@ -190,19 +190,18 @@ case "$public_url" in
     ;;
 esac
 
-if [ -n "${MAILTUBE_MANIFEST_URL:-}" ] && [ -n "${MAILTUBE_COSIGN_IDENTITY:-}" ]; then
-  updater_container=$(docker create "$digest")
-  docker cp "$updater_container:/usr/local/share/mailtube/update.sh" "$CONFIG_DIR/update.sh"
-  docker cp "$updater_container:/usr/local/share/mailtube/install-updater.sh" "$CONFIG_DIR/install-updater.sh"
-  docker rm "$updater_container" >/dev/null
-  chmod 700 "$CONFIG_DIR/update.sh" "$CONFIG_DIR/install-updater.sh"
-  MAILTUBE_CONFIG_DIR="$CONFIG_DIR" \
-  MAILTUBE_MANIFEST_URL="$MAILTUBE_MANIFEST_URL" \
-  MAILTUBE_COSIGN_IDENTITY="$MAILTUBE_COSIGN_IDENTITY" \
-    "$CONFIG_DIR/install-updater.sh"
-else
-  printf 'Automatic updates were not scheduled. Set MAILTUBE_MANIFEST_URL and MAILTUBE_COSIGN_IDENTITY, then run scripts/install-updater.sh.\n'
-fi
+update_channel=$(sed -n 's/^MAILTUBE_UPDATE_CHANNEL=//p' "$CONFIG_DIR/.env" | tr -d '"')
+update_channel=${update_channel:-stable}
+updater_container=$(docker create "$digest")
+docker cp "$updater_container:/usr/local/share/mailtube/update.sh" "$CONFIG_DIR/update.sh"
+docker cp "$updater_container:/usr/local/share/mailtube/install-updater.sh" "$CONFIG_DIR/install-updater.sh"
+docker rm "$updater_container" >/dev/null
+chmod 700 "$CONFIG_DIR/update.sh" "$CONFIG_DIR/install-updater.sh"
+MAILTUBE_CONFIG_DIR="$CONFIG_DIR" \
+MAILTUBE_UPDATE_CHANNEL="$update_channel" \
+MAILTUBE_MANIFEST_URL="${MAILTUBE_MANIFEST_URL:-}" \
+MAILTUBE_COSIGN_IDENTITY="${MAILTUBE_COSIGN_IDENTITY:-}" \
+  "$CONFIG_DIR/install-updater.sh"
 
 # dashboard-url:start
 # Exercised under dash by tests/test_installer.py.

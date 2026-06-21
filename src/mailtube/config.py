@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import re
@@ -8,6 +9,34 @@ from typing import Annotated, Any, Literal
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+
+def validate_mail_host(value: str) -> str:
+    """Validate a mail server host without accepting a URL or embedded port."""
+    value = value.strip()
+    if not value:
+        raise ValueError("mail host must not be empty")
+    try:
+        ipaddress.ip_address(value)
+        return value
+    except ValueError:
+        pass
+    if (
+        "://" in value
+        or ":" in value
+        or "/" in value
+        or any(character.isspace() for character in value)
+    ):
+        raise ValueError("mail host must be a hostname only; enter the port separately")
+    hostname = value.rstrip(".")
+    if len(hostname) > 253 or not all(
+        label
+        and len(label) <= 63
+        and re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?", label)
+        for label in hostname.split(".")
+    ):
+        raise ValueError("mail host is not a valid hostname")
+    return hostname.lower()
 
 
 class Settings(BaseSettings):
@@ -109,6 +138,18 @@ class Settings(BaseSettings):
             if value.startswith("["):
                 return json.loads(value)
             return [part.strip() for part in value.split(",") if part.strip()]
+        return value
+
+    @field_validator("imap_host", "smtp_host")
+    @classmethod
+    def validate_email_hostname(cls, value: str) -> str:
+        return validate_mail_host(value)
+
+    @field_validator("cookies_file", mode="before")
+    @classmethod
+    def empty_cookies_path_is_unconfigured(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
         return value
 
     @field_validator("instance_id")

@@ -12,7 +12,7 @@ from importlib import metadata
 from pathlib import Path
 from typing import Any, cast
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, UploadFile, status
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -34,6 +34,9 @@ from mailtube.security.runtime_secrets import (
 from mailtube.storage import LocalStorage, S3Storage, Storage
 
 logger = logging.getLogger(__name__)
+
+MAX_YOUTUBE_COOKIES_BYTES = 2 * 1024 * 1024
+MANAGED_YOUTUBE_COOKIES_NAME = "youtube-cookies.txt"
 
 EDITABLE_SETTING_FIELDS = {
     "admin_username",
@@ -123,6 +126,7 @@ class SecurityHeadersMiddleware:
 class AppState:
     def __init__(self, settings: Settings, db: Database) -> None:
         self.db = db
+        self.configured_youtube_cookies_path = settings.cookies_file
         self.settings = self._load_persisted_settings(settings)
         self.storage: Storage = (
             S3Storage(self.settings) if self.settings.storage_backend == "s3" else LocalStorage()
@@ -147,7 +151,60 @@ class AppState:
                 )
             except RuntimeSecretError:
                 logger.warning("Ignoring an unreadable encrypted %s override", field)
+        managed_cookies = base.data_dir / MANAGED_YOUTUBE_COOKIES_NAME
+        if managed_cookies.is_file():
+            values["cookies_file"] = managed_cookies
         return Settings.model_validate({**base.model_dump(), **values})
+
+    @property
+    def managed_youtube_cookies_path(self) -> Path:
+        return self.settings.data_dir / MANAGED_YOUTUBE_COOKIES_NAME
+
+    def install_youtube_cookies(self, content: bytes) -> None:
+        if not content or len(content) > MAX_YOUTUBE_COOKIES_BYTES:
+            raise ValueError("Cookies file must be between 1 byte and 2 MiB")
+        if b"\x00" in content:
+            raise ValueError("Cookies file must be plain text in Netscape format")
+        try:
+            text = content.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError("Cookies file must be UTF-8 text in Netscape format") from exc
+        lines = [
+            line.removeprefix("#HttpOnly_")
+            for line in text.splitlines()
+            if line and (not line.startswith("#") or line.startswith("#HttpOnly_"))
+        ]
+        cookie_rows = [line.split("\t") for line in lines]
+        if not cookie_rows or any(len(row) != 7 for row in cookie_rows):
+            raise ValueError("Cookies file must use Netscape cookies.txt format")
+        domains = {row[0].lstrip(".").lower() for row in cookie_rows}
+        if not any(
+            domain == allowed or domain.endswith(f".{allowed}")
+            for domain in domains
+            for allowed in ("youtube.com", "google.com")
+        ):
+            raise ValueError("Cookies file does not contain YouTube or Google cookies")
+
+        target = self.managed_youtube_cookies_path
+        temporary = target.with_name(f".{target.name}.{secrets.token_hex(8)}.tmp")
+        try:
+            temporary.write_bytes(content)
+            temporary.chmod(0o600)
+            temporary.replace(target)
+        finally:
+            temporary.unlink(missing_ok=True)
+        self._set_cookies_file(target)
+
+    def remove_managed_youtube_cookies(self) -> None:
+        self.managed_youtube_cookies_path.unlink(missing_ok=True)
+        configured = self.configured_youtube_cookies_path
+        self._set_cookies_file(configured if configured and configured.is_file() else None)
+
+    def _set_cookies_file(self, path: Path | None) -> None:
+        updated = Settings.model_validate({**self.settings.model_dump(), "cookies_file": path})
+        self.settings = updated
+        self.downloader.settings = updated
+        self.coordinator.settings = updated
 
     async def start(self) -> None:
         await self.coordinator.start()
@@ -506,7 +563,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "allowed_hosts": current.allowed_hosts,
                 "secure_cookies": current.secure_cookies,
                 "internal_port": current.port,
-                "cookies_configured": current.cookies_file is not None,
+                "cookies_configured": bool(current.cookies_file and current.cookies_file.is_file()),
                 "has_imap_password": bool(current.imap_password.get_secret_value()),
                 "has_smtp_password": bool(current.smtp_password.get_secret_value()),
                 "has_s3_secret_access_key": bool(current.s3_secret_access_key.get_secret_value()),
@@ -528,6 +585,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except (ValueError, ValidationError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return {"ok": True, "updated": updated}
+
+    @app.post("/api/v1/settings/youtube-cookies")
+    async def upload_youtube_cookies(
+        file: UploadFile,
+        _: dict[str, Any] = Depends(require_csrf),
+        app_state: AppState = Depends(get_state),
+    ) -> dict[str, bool]:
+        content = await file.read(MAX_YOUTUBE_COOKIES_BYTES + 1)
+        await file.close()
+        try:
+            await asyncio.to_thread(app_state.install_youtube_cookies, content)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {"ok": True}
+
+    @app.delete("/api/v1/settings/youtube-cookies", status_code=204)
+    async def delete_youtube_cookies(
+        _: dict[str, Any] = Depends(require_csrf),
+        app_state: AppState = Depends(get_state),
+    ) -> Response:
+        await asyncio.to_thread(app_state.remove_managed_youtube_cookies)
+        return Response(status_code=204)
 
     @app.post("/api/v1/diagnostics/email")
     async def test_email(

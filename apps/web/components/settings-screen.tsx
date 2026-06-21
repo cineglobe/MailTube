@@ -8,6 +8,8 @@ import {
   MailIcon,
   SaveIcon,
   ServerCogIcon,
+  Trash2Icon,
+  UploadIcon,
 } from "lucide-react"
 import useSWR from "swr"
 import { toast } from "sonner"
@@ -151,6 +153,8 @@ function SettingsForm({
     data.sender_allowlist.join(", ")
   )
   const [saving, setSaving] = useState(false)
+  const [cookiesFile, setCookiesFile] = useState<File | null>(null)
+  const [cookiesBusy, setCookiesBusy] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
 
   function update<K extends keyof RuntimeSettings>(
@@ -214,6 +218,50 @@ function SettingsForm({
           ? diagnosticError.message
           : "Diagnostic failed"
       )
+    }
+  }
+
+  async function uploadCookies() {
+    if (!cookiesFile) return
+    setCookiesBusy(true)
+    try {
+      const body = new FormData()
+      body.append("file", cookiesFile)
+      await apiFetch("/api/v1/settings/youtube-cookies", {
+        method: "POST",
+        body,
+      })
+      setCookiesFile(null)
+      await onSaved()
+      toast.success("YouTube cookies installed")
+    } catch (uploadError) {
+      toast.error(
+        uploadError instanceof Error
+          ? uploadError.message
+          : "Could not upload YouTube cookies"
+      )
+    } finally {
+      setCookiesBusy(false)
+    }
+  }
+
+  async function removeCookies() {
+    setCookiesBusy(true)
+    try {
+      await apiFetch("/api/v1/settings/youtube-cookies", {
+        method: "DELETE",
+      })
+      setCookiesFile(null)
+      await onSaved()
+      toast.success("YouTube cookies removed")
+    } catch (removeError) {
+      toast.error(
+        removeError instanceof Error
+          ? removeError.message
+          : "Could not remove YouTube cookies"
+      )
+    } finally {
+      setCookiesBusy(false)
     }
   }
 
@@ -846,20 +894,63 @@ function SettingsForm({
                     update("pot_provider_url", value || null)
                   }
                 />
-                <ReadOnlyValue
-                  label="YouTube cookies"
-                  value={
-                    draft.cookies_configured ? "Configured" : "Not configured"
-                  }
-                />
+                <Field>
+                  <FieldLabel htmlFor="youtube-cookies">
+                    YouTube cookies
+                  </FieldLabel>
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <Input
+                      id="youtube-cookies"
+                      type="file"
+                      accept=".txt,text/plain"
+                      disabled={cookiesBusy}
+                      onChange={(event) =>
+                        setCookiesFile(event.target.files?.[0] ?? null)
+                      }
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={!cookiesFile || cookiesBusy}
+                      onClick={uploadCookies}
+                    >
+                      {cookiesBusy ? <Spinner /> : <UploadIcon />}
+                      Upload
+                    </Button>
+                    {draft.cookies_configured ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={cookiesBusy}
+                        onClick={removeCookies}
+                      >
+                        <Trash2Icon /> Remove
+                      </Button>
+                    ) : null}
+                  </div>
+                  <FieldDescription>
+                    {draft.cookies_configured
+                      ? "A cookies file is configured. Uploading replaces it."
+                      : "Upload a Netscape cookies.txt export, up to 2 MiB."}
+                  </FieldDescription>
+                </Field>
               </FieldGroup>
             </CardContent>
             <CardFooter>
-              <p className="text-xs text-muted-foreground">
-                Cookie files and optional Compose profiles remain
-                installer-managed because they require host filesystem or
-                service changes.
-              </p>
+              <div className="space-y-2 text-xs text-muted-foreground">
+                <p>
+                  Updates are performed by the signed host updater, not by the
+                  web container. Run{" "}
+                  <code>systemctl --user start mailtube-update.service</code>
+                  {" "}on a Linux host to force an installed updater to check
+                  now.
+                </p>
+                <p>
+                  Use cookies from a dedicated account. The file grants access
+                  to its YouTube session and is stored encrypted at rest only
+                  if the Docker volume itself uses disk encryption.
+                </p>
+              </div>
             </CardFooter>
           </Card>
         </TabsContent>

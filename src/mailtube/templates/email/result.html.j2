@@ -8,8 +8,8 @@
             <div style="font-family:Georgia,serif;font-size:30px;font-weight:700">MailTube</div>
           </td></tr>
           <tr><td style="padding:32px">
-            <h1 style="margin:0 0 10px;font-family:Georgia,serif;font-size:34px;line-height:1.1">Your files are ready.</h1>
-            <p style="margin:0 0 26px;color:#5d5b55;font-size:15px;line-height:1.6">Download the completed files below. Links expire after {{ retention_hours }} hours.</p>
+            <h1 style="margin:0 0 10px;font-family:Georgia,serif;font-size:34px;line-height:1.1">{{ status_heading }}</h1>
+            <p style="margin:0 0 26px;color:#5d5b55;font-size:15px;line-height:1.6">{{ status_message }}</p>
             {% for item in items %}
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #b8b5ad;padding:18px 0">
                 <tr>
@@ -31,4 +31,3 @@
     </table>
   </body>
 </html>
-

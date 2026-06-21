@@ -3,7 +3,7 @@ from io import StringIO
 from pathlib import Path
 
 import pytest
-from textual.widgets import Input, Select
+from textual.widgets import Input, Select, Switch
 
 from mailtube.setup.wizard import (
     AccessScreen,
@@ -15,6 +15,7 @@ from mailtube.setup.wizard import (
     load_setup_data,
     refresh_compose,
     run_setup,
+    validate_setup_data,
 )
 
 
@@ -49,6 +50,18 @@ async def test_wizard_keyboard_flow_reaches_email_screen(tmp_path: Path) -> None
         assert app.screen.query_one("#smtp-port", Input).value == "587"
 
 
+@pytest.mark.asyncio
+async def test_automatic_updates_are_enabled_by_default_in_terminal_setup(tmp_path: Path) -> None:
+    app = MailTubeSetupApp(tmp_path)
+    async with app.run_test(size=(100, 60)) as pilot:
+        app.push_screen("policy")
+        await pilot.pause()
+        assert app.screen.query_one("#auto-update", Switch).value is True
+        app.screen.query_one("#auto-update", Switch).value = False
+        app.screen.capture()  # type: ignore[attr-defined]
+        assert app.data.auto_update_enabled is False
+
+
 def test_generated_configuration_is_private_and_uses_separate_host_port(tmp_path: Path) -> None:
     app = MailTubeSetupApp(tmp_path)
     app.data.admin_password = "correct horse battery"
@@ -65,6 +78,11 @@ def test_generated_configuration_is_private_and_uses_separate_host_port(tmp_path
     assert 'MAILTUBE_HTTP_PORT="8765"' in env
     assert 'MAILTUBE_PORT="8080"' in env
     assert 'MAILTUBE_POLL_INTERVAL_SECONDS="15"' in env
+    assert 'MAILTUBE_IMAP_HOST="imap.gmail.com"' in env
+    assert 'MAILTUBE_IMAP_PORT="993"' in env
+    assert 'MAILTUBE_SMTP_HOST="smtp.gmail.com"' in env
+    assert 'MAILTUBE_SMTP_PORT="587"' in env
+    assert 'MAILTUBE_UPDATE_CHANNEL="stable"' in env
     assert "correct horse battery" not in env
     assert "MAILTUBE_SESSION_SECRET_FILE" in env
     compose = compose_path.read_text()
@@ -77,6 +95,24 @@ def test_generated_configuration_is_private_and_uses_separate_host_port(tmp_path
     assert "cap_add: [DAC_OVERRIDE]" in compose
     assert "init: true" not in compose
     assert "\nsecrets:\n" not in compose
+
+
+def test_setup_rejects_mail_hosts_containing_ports(tmp_path: Path) -> None:
+    app = MailTubeSetupApp(tmp_path)
+    app.data.admin_password = "correct horse battery"
+    app.data.imap_host = "imap.gmail.com:993imap.gmail.com:993"
+    with pytest.raises(ValueError, match="enter the port separately"):
+        validate_setup_data(app.data)
+
+
+def test_disabling_automatic_updates_writes_off_channel(tmp_path: Path) -> None:
+    app = MailTubeSetupApp(tmp_path)
+    app.data.admin_password = "correct horse battery"
+    app.data.delivery_mode = "attachments"
+    app.data.storage_preset = "local"
+    app.data.auto_update_enabled = False
+    app.write_configuration()
+    assert 'MAILTUBE_UPDATE_CHANNEL="off"' in (tmp_path / ".env").read_text()
 
 
 def test_non_interactive_setup_rejects_open_permissions(tmp_path: Path) -> None:

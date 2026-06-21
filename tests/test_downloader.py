@@ -66,3 +66,13 @@ def test_downloader_errors_do_not_echo_upstream_urls_or_credentials() -> None:
     )
     assert "secret" not in message
     assert "credential" not in message
+
+
+def test_downloader_reports_invalid_cookie_path() -> None:
+    message = YtDlpDownloader._safe_failure(["ERROR: [Errno 21] Is a directory: '.'"])
+    assert message == "The configured YouTube cookies path is not a file"
+
+
+def test_downloader_reports_youtube_verification_challenge() -> None:
+    message = YtDlpDownloader._safe_failure(["ERROR: Sign in to confirm you're not a bot"])
+    assert message == "YouTube requested additional verification; review the compatibility guide"

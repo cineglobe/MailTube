@@ -12,5 +12,6 @@
   "max_urls": 5,
   "max_file_mb": 1024,
   "retention_hours": 24,
-  "pot_provider": false
+  "pot_provider": false,
+  "auto_update_enabled": true
 }

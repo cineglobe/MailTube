@@ -345,13 +345,27 @@ class EmailService:
             batch.get("message_references"),
         )
         ready = sum(1 for job in jobs if job["state"] == "ready")
-        message.set_content(
-            f"MailTube completed {ready} of {len(jobs)} requested conversions. "
-            f"Download links expire after {self.settings.retention_hours} hours."
-        )
+        if ready == len(jobs) and not request_issues:
+            status_heading = "Your files are ready."
+            status_message = (
+                "Download the completed files below. "
+                f"Links expire after {self.settings.retention_hours} hours."
+            )
+        elif ready:
+            status_heading = "Some files are ready."
+            status_message = (
+                f"MailTube completed {ready} of {len(jobs)} requested conversions. "
+                "Review the errors below for the remaining requests."
+            )
+        else:
+            status_heading = "Your request could not be completed."
+            status_message = "MailTube did not complete any of the requested conversions."
+        message.set_content(f"{status_heading}\n\n{status_message}")
         message.add_alternative(
             self.templates.get_template("result.html.j2").render(
-                items=rendered, retention_hours=self.settings.retention_hours
+                items=rendered,
+                status_heading=status_heading,
+                status_message=status_message,
             ),
             subtype="html",
         )

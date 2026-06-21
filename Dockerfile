@@ -10,9 +10,10 @@ COPY apps/web/ ./
 RUN pnpm build
 
 FROM denoland/deno:alpine-2.8.1 AS deno
+FROM gcr.io/projectsigstore/cosign:v3.0.6 AS cosign
 
 FROM python:3.12-alpine AS runtime
-ARG VERSION=1.0.5
+ARG VERSION=1.0.6
 ARG SOURCE_URL="https://github.com/cineglobe/MailTube"
 LABEL org.opencontainers.image.title="MailTube" \
       org.opencontainers.image.description="Private web and email media conversion appliance" \
@@ -29,6 +30,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 RUN apk add --no-cache ca-certificates ffmpeg tini
 COPY --from=deno /bin/deno /usr/local/bin/deno
+COPY --from=cosign /ko-app/cosign /usr/local/bin/cosign
 COPY --from=deno /usr/local/lib/glibc/ /usr/local/lib/glibc/
 COPY --from=deno /lib/ld-linux-* /lib/
 RUN mkdir -p /lib64 \

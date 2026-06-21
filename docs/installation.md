@@ -8,7 +8,7 @@ Run the published installer directly:
 curl -fsSL https://github.com/cineglobe/MailTube/releases/latest/download/install.sh | sh
 ```
 
-The script reopens `/dev/tty` for the Textual wizard when its stdin is a pipe. It checks architecture, pulls the image, resolves an immutable digest, runs setup without a Docker-socket mount, validates Compose, initializes and verifies the private secrets volume, starts services, and waits for health.
+The script reopens `/dev/tty` for the Textual wizard when its stdin is a pipe. It checks architecture, pulls the image, resolves an immutable digest, runs setup without a Docker-socket mount, validates Compose, initializes and verifies the private secrets volume, starts services, waits for health, and installs the default six-hour signed stable-update timer when enabled in setup.
 
 For unattended deployment, copy `docs/setup.example.json`, fill it in, restrict it to mode `0600`, and set `MAILTUBE_SETUP_FILE` to its absolute path before running the installer. Unknown fields and unsafe permissions are rejected. The file contains credentials; delete or archive it securely after setup.
 

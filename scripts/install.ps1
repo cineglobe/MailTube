@@ -37,14 +37,20 @@ if ($PublicUrl -like 'https://*') {
   Write-Host "Secure cookies are enabled. Use $PublicUrl for login and diagnostics; local HTTP sessions will not retain authentication."
 }
 
-if ($env:MAILTUBE_MANIFEST_URL -and $env:MAILTUBE_COSIGN_IDENTITY) {
-  $UpdaterContainer = docker create $Digest
-  docker cp "${UpdaterContainer}:/usr/local/share/mailtube/update.ps1" "$ConfigDir\update.ps1"
-  docker rm $UpdaterContainer | Out-Null
-  $Arguments = "-NoProfile -File `"$ConfigDir\update.ps1`" -ConfigDir `"$ConfigDir`" -ManifestUrl `"$env:MAILTUBE_MANIFEST_URL`" -CosignIdentity `"$env:MAILTUBE_COSIGN_IDENTITY`""
+$UpdateChannel = (((Get-Content "$ConfigDir\.env" | Where-Object { $_ -like 'MAILTUBE_UPDATE_CHANNEL=*' }) -replace '^MAILTUBE_UPDATE_CHANNEL=', '').Trim('"'))
+if (-not $UpdateChannel) { $UpdateChannel = "stable" }
+$UpdaterContainer = docker create $Digest
+docker cp "${UpdaterContainer}:/usr/local/share/mailtube/update.ps1" "$ConfigDir\update.ps1"
+docker rm $UpdaterContainer | Out-Null
+if ($UpdateChannel -eq "stable") {
+  $ManifestUrl = if ($env:MAILTUBE_MANIFEST_URL) { $env:MAILTUBE_MANIFEST_URL } else { "https://github.com/cineglobe/MailTube/releases/latest/download/stable-manifest.json" }
+  $CosignIdentity = if ($env:MAILTUBE_COSIGN_IDENTITY) { $env:MAILTUBE_COSIGN_IDENTITY } else { "https://github.com/cineglobe/MailTube/.github/workflows/release.yml@refs/heads/main" }
+  $Arguments = "-NoProfile -File `"$ConfigDir\update.ps1`" -ConfigDir `"$ConfigDir`" -ManifestUrl `"$ManifestUrl`" -CosignIdentity `"$CosignIdentity`""
   $Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $Arguments
-  $Trigger = New-ScheduledTaskTrigger -Daily -At 3am
+  $Trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(10) -RepetitionInterval (New-TimeSpan -Hours 6)
   Register-ScheduledTask -TaskName "MailTube Stable Update" -Action $Action -Trigger $Trigger -Force | Out-Null
+} else {
+  Unregister-ScheduledTask -TaskName "MailTube Stable Update" -Confirm:$false -ErrorAction SilentlyContinue
 }
 $DashboardUrl = if ($PublicUrl) { $PublicUrl } else { "http://127.0.0.1:8080" }
 Write-Host "MailTube is ready at $DashboardUrl"

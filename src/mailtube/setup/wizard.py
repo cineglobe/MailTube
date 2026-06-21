@@ -27,7 +27,7 @@ from textual.widgets import (
     Switch,
 )
 
-from mailtube.config import Settings
+from mailtube.config import Settings, validate_mail_host
 from mailtube.email.service import EmailService
 from mailtube.security.auth import AuthService
 from mailtube.storage import S3Storage
@@ -70,6 +70,7 @@ class SetupData:
     retention_hours: int = 24
     pot_provider: bool = False
     cookies_source: str = ""
+    auto_update_enabled: bool = True
 
 
 def validate_setup_data(data: SetupData) -> None:
@@ -78,7 +79,12 @@ def validate_setup_data(data: SetupData) -> None:
         value = getattr(data, name)
         if isinstance(value, bool) or not isinstance(value, int):
             raise ValueError(f"{name} must be an integer")
-    for name in ("email_enabled", "s3_force_path_style", "pot_provider"):
+    for name in (
+        "email_enabled",
+        "s3_force_path_style",
+        "pot_provider",
+        "auto_update_enabled",
+    ):
         if not isinstance(getattr(data, name), bool):
             raise ValueError(f"{name} must be true or false")
     for name in ("allowed_hosts", "sender_allowlist"):
@@ -104,6 +110,8 @@ def validate_setup_data(data: SetupData) -> None:
         raise ValueError("public_url must start with http:// or https://")
     if not data.allowed_hosts:
         raise ValueError("allowed_hosts must contain at least one hostname")
+    data.imap_host = validate_mail_host(data.imap_host)
+    data.smtp_host = validate_mail_host(data.smtp_host)
     if len(data.admin_password) < 12:
         raise ValueError("admin_password must contain at least 12 characters")
     if data.email_enabled and not data.imap_username:
@@ -500,6 +508,9 @@ class PolicyScreen(WizardScreen):
             with Horizontal(classes="switch-row"):
                 yield Switch(data.pot_provider, id="pot-provider")
                 yield Label("Enable optional PO-token provider sidecar")
+            with Horizontal(classes="switch-row"):
+                yield Switch(data.auto_update_enabled, id="auto-update")
+                yield Label("Install signed stable updates automatically every 6 hours")
             yield Label("Optional Netscape cookie file on the Docker host")
             yield Static(
                 "Advanced and usually unnecessary. Cookies let yt-dlp reuse a signed-in YouTube "
@@ -523,6 +534,7 @@ class PolicyScreen(WizardScreen):
         data.max_file_mb = max(50, int(self.query_one("#max-file", Input).value))
         data.retention_hours = max(1, min(168, int(self.query_one("#retention", Input).value)))
         data.pot_provider = self.query_one("#pot-provider", Switch).value
+        data.auto_update_enabled = self.query_one("#auto-update", Switch).value
         data.cookies_source = self.query_one("#cookies-source", Input).value.strip()
 
 
@@ -537,7 +549,8 @@ class ReviewScreen(WizardScreen):
                 f"Admin: {data.admin_username}\n"
                 f"Email: {'enabled' if data.email_enabled else 'disabled'} · Sender policy: {data.sender_policy}\n"
                 f"Delivery: {data.delivery_mode} · Storage: {data.storage_backend}\n"
-                f"Preset: {data.resource_preset} · Retention: {data.retention_hours} hours",
+                f"Preset: {data.resource_preset} · Retention: {data.retention_hours} hours\n"
+                f"Automatic updates: {'stable every 6 hours' if data.auto_update_enabled else 'disabled'}",
                 classes="review",
             )
             yield Static(
@@ -676,6 +689,7 @@ class MailTubeSetupApp(App[str]):
             "MAILTUBE_MAX_URLS_PER_BATCH": data.max_urls,
             "MAILTUBE_MAX_FILE_MB": data.max_file_mb,
             "MAILTUBE_RETENTION_HOURS": data.retention_hours,
+            "MAILTUBE_UPDATE_CHANNEL": "stable" if data.auto_update_enabled else "off",
             "MAILTUBE_POT_PROVIDER_URL": "http://pot-provider:4416" if data.pot_provider else "",
             "MAILTUBE_COOKIES_SOURCE": data.cookies_source or "./secrets/empty-cookies.txt",
             "MAILTUBE_COOKIES_FILE": "/run/secrets/youtube-cookies.txt"

@@ -44,6 +44,20 @@ class FakeStorage:
     pass
 
 
+class FakeResultDatabase(FakeDatabase):
+    def jobs_for_batch(self, batch_id: str) -> list[dict[str, Any]]:
+        return [
+            {
+                "state": "failed",
+                "title": None,
+                "requested_format": "mp4",
+                "requested_quality": "1080p",
+                "error_message": "YouTube requested additional verification",
+                "size_bytes": None,
+            }
+        ]
+
+
 def test_mailbox_can_accept_a_request_sent_from_its_own_address(tmp_path: Path) -> None:
     message = EmailMessage()
     message["From"] = "mailtube@example.com"
@@ -69,3 +83,35 @@ def test_mailbox_can_accept_a_request_sent_from_its_own_address(tmp_path: Path) 
 
     assert database.created is True
     assert mailbox.seen is True
+
+
+def test_failed_batch_email_does_not_claim_files_are_ready(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    settings = Settings(
+        environment="test",
+        work_dir=work,
+        smtp_from="mailtube@example.com",
+        imap_password=SecretStr("app-password"),
+        smtp_password=SecretStr("app-password"),
+    )
+    service = EmailService(settings, FakeResultDatabase(), FakeStorage())  # type: ignore[arg-type]
+    sent: list[EmailMessage] = []
+    service._smtp_send = sent.append  # type: ignore[method-assign]
+
+    service.send_batch_result(
+        {
+            "id": "batch",
+            "requester": "requester@example.com",
+            "subject": "convert",
+            "request_issues": "[]",
+        }
+    )
+
+    assert len(sent) == 1
+    plain = sent[0].get_body(preferencelist=("plain",))
+    html = sent[0].get_body(preferencelist=("html",))
+    assert plain is not None
+    assert html is not None
+    assert "Your request could not be completed" in plain.get_content()
+    assert "Your files are ready" not in html.get_content()

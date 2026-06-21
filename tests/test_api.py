@@ -1,3 +1,4 @@
+import stat
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -104,6 +105,66 @@ def test_email_diagnostic_is_a_csrf_protected_post(tmp_path: Path) -> None:
         )
         assert response.status_code == 200
         assert response.json() == {"ok": False, "detail": "Email integration is disabled"}
+
+
+def test_youtube_cookies_upload_is_validated_private_and_removable(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    cookies = (
+        b"# Netscape HTTP Cookie File\n"
+        b".youtube.com\tTRUE\t/\tTRUE\t2147483647\tSID\tprivate-cookie-value\n"
+    )
+    with TestClient(create_app(settings)) as client:
+        login = client.post(
+            "/api/v1/auth/login",
+            json={"username": "admin", "password": "correct horse battery"},
+        )
+        csrf = login.json()["csrf_token"]
+        assert (
+            client.post(
+                "/api/v1/settings/youtube-cookies",
+                files={"file": ("cookies.txt", cookies, "text/plain")},
+            ).status_code
+            == 403
+        )
+        invalid = client.post(
+            "/api/v1/settings/youtube-cookies",
+            files={"file": ("cookies.txt", b"not cookies", "text/plain")},
+            headers={"X-CSRF-Token": csrf},
+        )
+        assert invalid.status_code == 422
+        uploaded = client.post(
+            "/api/v1/settings/youtube-cookies",
+            files={"file": ("cookies.txt", cookies, "text/plain")},
+            headers={"X-CSRF-Token": csrf},
+        )
+        assert uploaded.status_code == 200
+        assert uploaded.json() == {"ok": True}
+        target = settings.data_dir / "youtube-cookies.txt"
+        assert target.read_bytes() == cookies
+        assert stat.S_IMODE(target.stat().st_mode) == 0o600
+        assert client.app.state.mailtube.downloader.settings.cookies_file == target
+        payload = client.get("/api/v1/settings").json()
+        assert payload["cookies_configured"] is True
+        assert "private-cookie-value" not in str(payload)
+
+        removed = client.delete(
+            "/api/v1/settings/youtube-cookies",
+            headers={"X-CSRF-Token": csrf},
+        )
+        assert removed.status_code == 204
+        assert not target.exists()
+        assert client.app.state.mailtube.downloader.settings.cookies_file is None
+
+
+def test_managed_youtube_cookies_survive_app_restart(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    target = settings.data_dir / "youtube-cookies.txt"
+    settings.data_dir.mkdir(parents=True)
+    target.write_text(
+        "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t2147483647\tSID\tvalue\n"
+    )
+    with TestClient(create_app(settings)) as client:
+        assert client.app.state.mailtube.settings.cookies_file == target
 
 
 def test_runtime_settings_are_encrypted_and_survive_restart(tmp_path: Path) -> None:
