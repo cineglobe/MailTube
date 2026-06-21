@@ -21,3 +21,11 @@ def test_release_supports_automatic_dispatch_and_validates_versions() -> None:
     assert "tag_name: v${{ steps.release.outputs.version }}" in workflow
     assert "target_commitish: ${{ steps.release.outputs.sha }}" in workflow
     assert '"Dockerfile"' in workflow
+
+
+def test_runtime_cosign_is_built_with_the_patched_go_toolchain() -> None:
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+
+    assert "FROM golang:1.26.4-alpine3.23 AS cosign-builder" in dockerfile
+    assert "github.com/sigstore/cosign/v3/cmd/cosign@v3.0.6" in dockerfile
+    assert "FROM gcr.io/projectsigstore/cosign:v3.0.6" not in dockerfile
