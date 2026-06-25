@@ -9,7 +9,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 COPY apps/web/ ./
 RUN pnpm build
 
-FROM denoland/deno:alpine-2.8.1 AS deno
+FROM denoland/deno:alpine-2.8.3 AS deno
 FROM --platform=$BUILDPLATFORM golang:1.26.4-alpine3.23 AS cosign-builder
 ARG TARGETOS
 ARG TARGETARCH
