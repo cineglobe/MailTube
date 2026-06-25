@@ -16,7 +16,7 @@ ARG TARGETARCH
 RUN GOOS=$TARGETOS GOARCH=$TARGETARCH CGO_ENABLED=0 GOBIN=/out \
     go install github.com/sigstore/cosign/v3/cmd/cosign@v3.0.6
 
-FROM python:3.12-alpine AS runtime
+FROM python:3.14-alpine AS runtime
 ARG VERSION=1.0.6
 ARG SOURCE_URL="https://github.com/cineglobe/MailTube"
 LABEL org.opencontainers.image.title="MailTube" \
