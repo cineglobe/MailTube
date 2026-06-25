@@ -181,6 +181,7 @@ def test_runtime_settings_are_encrypted_and_survive_restart(tmp_path: Path) -> N
                 "imap_host": "imap.example.test",
                 "imap_password": "private-app-password",
                 "max_concurrent_jobs": 2,
+                "email_success_template_html": "<html>{{ status_heading }}</html>",
             },
             headers={"X-CSRF-Token": login.json()["csrf_token"]},
         )
@@ -200,5 +201,6 @@ def test_runtime_settings_are_encrypted_and_survive_restart(tmp_path: Path) -> N
         assert payload["imap_host"] == "imap.example.test"
         assert payload["poll_interval_seconds"] == 15
         assert payload["max_concurrent_jobs"] == 2
+        assert payload["email_success_template_html"] == "<html>{{ status_heading }}</html>"
         assert payload["has_imap_password"] is True
         assert "imap_password" not in payload

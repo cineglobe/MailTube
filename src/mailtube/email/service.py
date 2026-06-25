@@ -17,11 +17,15 @@ from email.utils import parseaddr
 from pathlib import Path
 from typing import Any
 
-from jinja2 import Environment, FileSystemLoader, select_autoescape
+from jinja2 import Environment, FileSystemLoader, TemplateError, select_autoescape
 
 from mailtube.config import Settings
 from mailtube.db import Database
 from mailtube.email.parser import message_body, parse_requests
+from mailtube.email.templates import (
+    DEFAULT_ERROR_EMAIL_TEMPLATE_HTML,
+    DEFAULT_RESULT_EMAIL_TEMPLATE_HTML,
+)
 from mailtube.storage import Storage
 
 logger = logging.getLogger(__name__)
@@ -281,7 +285,11 @@ class EmailService:
         )
         safe_reason = reason[:500]
         message.set_content(f"MailTube could not start your request.\n\n{safe_reason}")
-        html_body = self.templates.get_template("error.html.j2").render(reason=safe_reason)
+        html_body = self._render_html(
+            self.settings.email_error_template_html,
+            DEFAULT_ERROR_EMAIL_TEMPLATE_HTML,
+            {"reason": safe_reason, "subject": subject},
+        )
         message.add_alternative(html_body, subtype="html")
         self._smtp_send(message)
 
@@ -346,26 +354,35 @@ class EmailService:
         )
         ready = sum(1 for job in jobs if job["state"] == "ready")
         if ready == len(jobs) and not request_issues:
+            template_source = self.settings.email_success_template_html
             status_heading = "Your files are ready."
             status_message = (
                 "Download the completed files below. "
                 f"Links expire after {self.settings.retention_hours} hours."
             )
         elif ready:
+            template_source = self.settings.email_partial_template_html
             status_heading = "Some files are ready."
             status_message = (
                 f"MailTube completed {ready} of {len(jobs)} requested conversions. "
                 "Review the errors below for the remaining requests."
             )
         else:
+            template_source = self.settings.email_failure_template_html
             status_heading = "Your request could not be completed."
             status_message = "MailTube did not complete any of the requested conversions."
         message.set_content(f"{status_heading}\n\n{status_message}")
         message.add_alternative(
-            self.templates.get_template("result.html.j2").render(
-                items=rendered,
-                status_heading=status_heading,
-                status_message=status_message,
+            self._render_html(
+                template_source,
+                DEFAULT_RESULT_EMAIL_TEMPLATE_HTML,
+                {
+                    "items": rendered,
+                    "retention_hours": self.settings.retention_hours,
+                    "status_heading": status_heading,
+                    "status_message": status_message,
+                    "subject": str(batch.get("subject") or "MailTube request"),
+                },
             ),
             subtype="html",
         )
@@ -382,6 +399,16 @@ class EmailService:
                 filename=str(artifact["filename"]),
             )
         self._smtp_send(message)
+
+    def _render_html(
+        self, template_source: str, fallback_source: str, context: dict[str, Any]
+    ) -> str:
+        source = template_source.strip() or fallback_source
+        try:
+            return self.templates.from_string(source).render(**context)
+        except TemplateError as exc:
+            logger.warning("Email HTML template failed; using default: %s", type(exc).__name__)
+            return self.templates.from_string(fallback_source).render(**context)
 
     def test_connections(self) -> dict[str, bool | str]:
         try:

@@ -10,8 +10,10 @@ COPY apps/web/ ./
 RUN pnpm build
 
 FROM denoland/deno:alpine-2.8.1 AS deno
-FROM golang:1.26.4-alpine3.23 AS cosign-builder
-RUN CGO_ENABLED=0 GOBIN=/out \
+FROM --platform=$BUILDPLATFORM golang:1.26.4-alpine3.23 AS cosign-builder
+ARG TARGETOS
+ARG TARGETARCH
+RUN GOOS=$TARGETOS GOARCH=$TARGETARCH CGO_ENABLED=0 GOBIN=/out \
     go install github.com/sigstore/cosign/v3/cmd/cosign@v3.0.6
 
 FROM python:3.12-alpine AS runtime

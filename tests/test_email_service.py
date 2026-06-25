@@ -115,3 +115,54 @@ def test_failed_batch_email_does_not_claim_files_are_ready(tmp_path: Path) -> No
     assert html is not None
     assert "Your request could not be completed" in plain.get_content()
     assert "Your files are ready" not in html.get_content()
+
+
+def test_failed_batch_email_uses_custom_html_template(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    settings = Settings(
+        environment="test",
+        work_dir=work,
+        smtp_from="mailtube@example.com",
+        imap_password=SecretStr("app-password"),
+        smtp_password=SecretStr("app-password"),
+        email_failure_template_html="<html><body>Custom failure: {{ items[0].error }}</body></html>",
+    )
+    service = EmailService(settings, FakeResultDatabase(), FakeStorage())  # type: ignore[arg-type]
+    sent: list[EmailMessage] = []
+    service._smtp_send = sent.append  # type: ignore[method-assign]
+
+    service.send_batch_result(
+        {
+            "id": "batch",
+            "requester": "requester@example.com",
+            "subject": "convert",
+            "request_issues": "[]",
+        }
+    )
+
+    html = sent[0].get_body(preferencelist=("html",))
+    assert html is not None
+    assert "Custom failure: YouTube requested additional verification" in html.get_content()
+
+
+def test_start_error_email_uses_custom_html_template(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    settings = Settings(
+        environment="test",
+        work_dir=work,
+        smtp_from="mailtube@example.com",
+        imap_password=SecretStr("app-password"),
+        smtp_password=SecretStr("app-password"),
+        email_error_template_html="<html><body>Rejected: {{ reason }}</body></html>",
+    )
+    service = EmailService(settings, FakeResultDatabase(), FakeStorage())  # type: ignore[arg-type]
+    sent: list[EmailMessage] = []
+    service._smtp_send = sent.append  # type: ignore[method-assign]
+
+    service.send_error("requester@example.com", "convert", "No supported links")
+
+    html = sent[0].get_body(preferencelist=("html",))
+    assert html is not None
+    assert "Rejected: No supported links" in html.get_content()

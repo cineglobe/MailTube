@@ -55,6 +55,7 @@ import {
 import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Textarea } from "@/components/ui/textarea"
 import { apiFetch, fetcher } from "@/lib/api"
 import type { RuntimeSettings } from "@/lib/types"
 
@@ -88,6 +89,10 @@ const EDITABLE_KEYS = [
   "delivery_mode",
   "max_attachment_mb",
   "max_email_requests_per_hour",
+  "email_success_template_html",
+  "email_partial_template_html",
+  "email_failure_template_html",
+  "email_error_template_html",
   "storage_backend",
   "s3_endpoint",
   "s3_region",
@@ -111,6 +116,22 @@ const EMPTY_SECRETS: SecretDraft = {
   smtp_password: "",
   s3_secret_access_key: "",
 }
+
+const RESULT_TEMPLATE_PLACEHOLDERS = [
+  "{{ status_heading }}",
+  "{{ status_message }}",
+  "{{ retention_hours }}",
+  "{{ subject }}",
+  "{% for item in items %}",
+  "{{ item.title }}",
+  "{{ item.format }}",
+  "{{ item.quality }}",
+  "{{ item.size }}",
+  "{{ item.url }}",
+  "{{ item.error }}",
+]
+
+const ERROR_TEMPLATE_PLACEHOLDERS = ["{{ reason }}", "{{ subject }}"]
 
 export function SettingsScreen() {
   const { data, error, mutate } = useSWR<RuntimeSettings>(
@@ -520,6 +541,56 @@ function SettingsForm({
                   max={1000}
                   onChange={(value) =>
                     update("max_email_requests_per_hour", value)
+                  }
+                />
+              </FieldGroup>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Reply HTML</CardTitle>
+              <CardDescription>
+                Customize the HTML sent back for completed, partial, failed, and
+                rejected requests.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <FieldGroup>
+                <TemplateField
+                  id="email-success-template"
+                  label="Success email"
+                  value={draft.email_success_template_html}
+                  placeholders={RESULT_TEMPLATE_PLACEHOLDERS}
+                  onChange={(value) =>
+                    update("email_success_template_html", value)
+                  }
+                />
+                <TemplateField
+                  id="email-partial-template"
+                  label="Partial success email"
+                  value={draft.email_partial_template_html}
+                  placeholders={RESULT_TEMPLATE_PLACEHOLDERS}
+                  onChange={(value) =>
+                    update("email_partial_template_html", value)
+                  }
+                />
+                <TemplateField
+                  id="email-failure-template"
+                  label="Failed conversion email"
+                  value={draft.email_failure_template_html}
+                  placeholders={RESULT_TEMPLATE_PLACEHOLDERS}
+                  onChange={(value) =>
+                    update("email_failure_template_html", value)
+                  }
+                />
+                <TemplateField
+                  id="email-error-template"
+                  label="Request rejected email"
+                  value={draft.email_error_template_html}
+                  placeholders={ERROR_TEMPLATE_PLACEHOLDERS}
+                  onChange={(value) =>
+                    update("email_error_template_html", value)
                   }
                 />
               </FieldGroup>
@@ -1015,6 +1086,43 @@ function TextField({
         autoComplete={autoComplete}
         onChange={(event) => onChange(event.target.value)}
       />
+    </Field>
+  )
+}
+
+function TemplateField({
+  id,
+  label,
+  value,
+  placeholders,
+  onChange,
+}: {
+  id: string
+  label: string
+  value: string
+  placeholders: string[]
+  onChange: (value: string) => void
+}) {
+  return (
+    <Field>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <Textarea
+        id={id}
+        value={value}
+        spellCheck={false}
+        className="min-h-52 resize-y font-mono text-xs leading-relaxed"
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <FieldDescription>
+        <span className="mb-2 block">Available placeholders</span>
+        <span className="flex flex-wrap gap-2">
+          {placeholders.map((placeholder) => (
+            <Badge key={placeholder} variant="outline">
+              {placeholder}
+            </Badge>
+          ))}
+        </span>
+      </FieldDescription>
     </Field>
   )
 }

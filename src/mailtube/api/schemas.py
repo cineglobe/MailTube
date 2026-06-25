@@ -77,6 +77,10 @@ class RuntimeSettingsUpdate(BaseModel):
     delivery_mode: Literal["links", "hybrid", "attachments"] | None = None
     max_attachment_mb: int | None = Field(default=None, ge=1, le=24)
     max_email_requests_per_hour: int | None = Field(default=None, ge=1, le=1000)
+    email_success_template_html: str | None = Field(default=None, max_length=30000)
+    email_partial_template_html: str | None = Field(default=None, max_length=30000)
+    email_failure_template_html: str | None = Field(default=None, max_length=30000)
+    email_error_template_html: str | None = Field(default=None, max_length=30000)
     storage_backend: Literal["local", "s3"] | None = None
     s3_endpoint: str | None = Field(default=None, max_length=2048)
     s3_region: str | None = Field(default=None, min_length=1, max_length=128)

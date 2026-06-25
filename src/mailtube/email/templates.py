@@ -1,0 +1,47 @@
+from __future__ import annotations
+
+DEFAULT_RESULT_EMAIL_TEMPLATE_HTML = """<!doctype html>
+<html lang="en">
+  <body style="margin:0;background:#f7f4ec;color:#12120f;font-family:Arial,sans-serif">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px;background:#f7f4ec">
+      <tr><td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#fffdf8;border:1px solid #b8b5ad">
+          <tr><td style="padding:26px 32px;border-bottom:3px solid #0757ee">
+            <div style="font-family:Georgia,serif;font-size:30px;font-weight:700">MailTube</div>
+          </td></tr>
+          <tr><td style="padding:32px">
+            <h1 style="margin:0 0 10px;font-family:Georgia,serif;font-size:34px;line-height:1.1">{{ status_heading }}</h1>
+            <p style="margin:0 0 26px;color:#5d5b55;font-size:15px;line-height:1.6">{{ status_message }}</p>
+            {% for item in items %}
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #b8b5ad;padding:18px 0">
+                <tr>
+                  <td style="padding:14px 12px 14px 0">
+                    <div style="font-size:15px;font-weight:700">{{ item.title }}</div>
+                    <div style="margin-top:5px;color:#5d5b55;font-size:12px;text-transform:uppercase">{{ item.format }} - {{ item.quality }}{% if item.size %} - {{ item.size }}{% endif %}</div>
+                    {% if item.error %}<div style="margin-top:8px;color:#e83b1d;font-size:13px">{{ item.error }}</div>{% endif %}
+                  </td>
+                  {% if item.url %}<td align="right" style="padding:14px 0">
+                    <a href="{{ item.url }}" style="display:inline-block;padding:12px 18px;background:#0757ee;color:#ffffff;text-decoration:none;font-weight:700;border-radius:3px">Download</a>
+                  </td>{% endif %}
+                </tr>
+              </table>
+            {% endfor %}
+          </td></tr>
+          <tr><td style="padding:18px 32px;border-top:1px solid #b8b5ad;color:#5d5b55;font-size:12px">Self-hosted by your MailTube instance. No tracking, no remote images.</td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>"""
+
+DEFAULT_ERROR_EMAIL_TEMPLATE_HTML = """<!doctype html>
+<html lang="en">
+  <body style="margin:0;background:#f7f4ec;color:#12120f;font-family:Arial,sans-serif">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px;background:#f7f4ec">
+      <tr><td align="center"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#fffdf8;border:1px solid #b8b5ad">
+        <tr><td style="padding:26px 32px;border-bottom:3px solid #e83b1d"><div style="font-family:Georgia,serif;font-size:30px;font-weight:700">MailTube</div></td></tr>
+        <tr><td style="padding:32px"><h1 style="margin:0 0 12px;font-family:Georgia,serif;font-size:32px">We could not start that request.</h1><p style="margin:0;color:#5d5b55;line-height:1.6">{{ reason }}</p></td></tr>
+      </table></td></tr>
+    </table>
+  </body>
+</html>"""

@@ -10,6 +10,11 @@ from typing import Annotated, Any, Literal
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from mailtube.email.templates import (
+    DEFAULT_ERROR_EMAIL_TEMPLATE_HTML,
+    DEFAULT_RESULT_EMAIL_TEMPLATE_HTML,
+)
+
 
 def validate_mail_host(value: str) -> str:
     """Validate a mail server host without accepting a URL or embedded port."""
@@ -101,6 +106,18 @@ class Settings(BaseSettings):
     sender_allowlist: Annotated[list[str], NoDecode] = Field(default_factory=list)
     delivery_mode: Literal["links", "hybrid", "attachments"] = "links"
     max_attachment_mb: int = 18
+    email_success_template_html: str = Field(
+        default=DEFAULT_RESULT_EMAIL_TEMPLATE_HTML, max_length=30000
+    )
+    email_partial_template_html: str = Field(
+        default=DEFAULT_RESULT_EMAIL_TEMPLATE_HTML, max_length=30000
+    )
+    email_failure_template_html: str = Field(
+        default=DEFAULT_RESULT_EMAIL_TEMPLATE_HTML, max_length=30000
+    )
+    email_error_template_html: str = Field(
+        default=DEFAULT_ERROR_EMAIL_TEMPLATE_HTML, max_length=30000
+    )
 
     storage_backend: Literal["local", "s3"] = "local"
     s3_endpoint: str | None = None

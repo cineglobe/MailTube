@@ -5,6 +5,7 @@ import mimetypes
 import os
 import re
 import signal
+import unicodedata
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,6 +14,7 @@ from mailtube.config import Settings
 
 ProgressCallback = Callable[[float], Awaitable[None]]
 PERCENT_RE = re.compile(r"__MT_PROGRESS__:(\d+(?:\.\d+)?)")
+UNSAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9]+")
 
 
 @dataclass(frozen=True)
@@ -138,7 +140,7 @@ class YtDlpDownloader:
                 raise DownloadError("The converted file exceeds the configured size limit")
             extension = path.suffix.lower().lstrip(".")
             content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-            filename = f"{job_id[:8]}.{extension}"
+            filename = safe_download_filename(title, extension, fallback=job_id[:8])
             final_path = path.with_name(filename)
             if final_path != path:
                 path.rename(final_path)
@@ -199,3 +201,12 @@ class YtDlpDownloader:
         if missing:
             return {"ok": False, "detail": f"Missing executables: {', '.join(missing)}"}
         return {"ok": True, "detail": "yt-dlp, ffmpeg, and Deno are available"}
+
+
+def safe_download_filename(title: str, extension: str, *, fallback: str) -> str:
+    normalized = unicodedata.normalize("NFKD", title)
+    ascii_title = normalized.encode("ascii", "ignore").decode("ascii")
+    stem = UNSAFE_FILENAME_RE.sub("_", ascii_title).strip("_")
+    if not stem:
+        stem = UNSAFE_FILENAME_RE.sub("_", fallback).strip("_") or "YouTube_conversion"
+    return f"{stem[:160]}.{extension.lower().lstrip('.')}"

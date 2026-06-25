@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 
 from mailtube.config import Settings
-from mailtube.downloader.ytdlp import YtDlpDownloader
+from mailtube.downloader.ytdlp import YtDlpDownloader, safe_download_filename
 
 
 @pytest.mark.asyncio
@@ -54,6 +54,7 @@ async def test_yt_dlp_uses_argument_array_and_bounded_output(
     assert "--no-playlist" in captured["args"]
     assert captured["kwargs"]["start_new_session"] is True
     assert "shell" not in captured["kwargs"]
+    assert result.filename == "Fixture_title.mp3"
 
 
 async def _record(values: list[float], value: float) -> None:
@@ -76,3 +77,11 @@ def test_downloader_reports_invalid_cookie_path() -> None:
 def test_downloader_reports_youtube_verification_challenge() -> None:
     message = YtDlpDownloader._safe_failure(["ERROR: Sign in to confirm you're not a bot"])
     assert message == "YouTube requested additional verification; review the compatibility guide"
+
+
+def test_safe_download_filename_uses_ascii_title_with_underscores() -> None:
+    assert (
+        safe_download_filename("Lo-fi beats 🎧 / sleep & study: 100%!", "MP4", fallback="abc123")
+        == "Lo_fi_beats_sleep_study_100.mp4"
+    )
+    assert safe_download_filename("🔥", "mp3", fallback="abc-123") == "abc_123.mp3"

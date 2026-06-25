@@ -86,6 +86,10 @@ export type RuntimeSettings = {
   delivery_mode: "links" | "hybrid" | "attachments"
   max_attachment_mb: number
   max_email_requests_per_hour: number
+  email_success_template_html: string
+  email_partial_template_html: string
+  email_failure_template_html: string
+  email_error_template_html: string
   storage_backend: "local" | "s3"
   s3_endpoint: string | null
   s3_region: string
